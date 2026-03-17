@@ -49,8 +49,14 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const { user, roles, signOut } = useAuth();
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
+  const initials = user?.user_metadata?.full_name
+    ? user.user_metadata.full_name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+    : user?.email?.slice(0, 2).toUpperCase() ?? "??";
+  const displayName = user?.user_metadata?.full_name || user?.email || "User";
+  const roleLabel = roles.includes("lab_owner") ? "Lab Owner" : roles.includes("analyst") ? "Analyst" : "Viewer";
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
