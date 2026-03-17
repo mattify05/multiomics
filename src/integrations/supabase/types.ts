@@ -14,16 +14,283 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          ip_address: string | null
+          new_data: Json | null
+          old_data: Json | null
+          record_id: string | null
+          table_name: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          new_data?: Json | null
+          old_data?: Json | null
+          record_id?: string | null
+          table_name: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          new_data?: Json | null
+          old_data?: Json | null
+          record_id?: string | null
+          table_name?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      datasets: {
+        Row: {
+          cohort: string | null
+          created_at: string
+          features: number | null
+          file_path: string | null
+          id: string
+          metadata: Json | null
+          modality: string
+          name: string
+          samples: number | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cohort?: string | null
+          created_at?: string
+          features?: number | null
+          file_path?: string | null
+          id?: string
+          metadata?: Json | null
+          modality?: string
+          name: string
+          samples?: number | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cohort?: string | null
+          created_at?: string
+          features?: number | null
+          file_path?: string | null
+          id?: string
+          metadata?: Json | null
+          modality?: string
+          name?: string
+          samples?: number | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      experiments: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          hyperparameters: Json | null
+          id: string
+          metrics: Json | null
+          model: string
+          name: string
+          pipeline_run_id: string | null
+          runtime: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          hyperparameters?: Json | null
+          id?: string
+          metrics?: Json | null
+          model: string
+          name: string
+          pipeline_run_id?: string | null
+          runtime?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          hyperparameters?: Json | null
+          id?: string
+          metrics?: Json | null
+          model?: string
+          name?: string
+          pipeline_run_id?: string | null
+          runtime?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "experiments_pipeline_run_id_fkey"
+            columns: ["pipeline_run_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_runs: {
+        Row: {
+          completed_at: string | null
+          config: Json | null
+          created_at: string
+          dataset_ids: string[] | null
+          description: string | null
+          id: string
+          name: string
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          config?: Json | null
+          created_at?: string
+          dataset_ids?: string[] | null
+          description?: string | null
+          id?: string
+          name: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          config?: Json | null
+          created_at?: string
+          dataset_ids?: string[] | null
+          description?: string | null
+          id?: string
+          name?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      results: {
+        Row: {
+          created_at: string
+          data: Json | null
+          experiment_id: string
+          file_path: string | null
+          id: string
+          result_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          data?: Json | null
+          experiment_id: string
+          file_path?: string | null
+          id?: string
+          result_type?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json | null
+          experiment_id?: string
+          file_path?: string | null
+          id?: string
+          result_type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "results_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "lab_owner" | "analyst" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +417,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["lab_owner", "analyst", "viewer"],
+    },
   },
 } as const

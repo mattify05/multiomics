@@ -3,6 +3,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import DataManager from "./pages/DataManager";
@@ -11,6 +13,10 @@ import MLExperiments from "./pages/MLExperiments";
 import ResultsExplorer from "./pages/ResultsExplorer";
 import XAIReports from "./pages/XAIReports";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,21 +27,27 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/data" element={<DataManager />} />
-            <Route path="/pipeline" element={<PipelineBuilder />} />
-            <Route path="/experiments" element={<MLExperiments />} />
-            <Route path="/results" element={<ResultsExplorer />} />
-            <Route path="/xai" element={<XAIReports />} />
-            <Route path="/workflows" element={<PlaceholderPage title="Workflow Export" description="Download and publish reproducible workflow manifests in Nextflow, Snakemake, and CWL formats." />} />
-            <Route path="/admin/team" element={<PlaceholderPage title="Team & Access" description="Manage team members, roles, and SSO configuration for your organization." />} />
-            <Route path="/admin/audit" element={<PlaceholderPage title="Audit Log" description="Immutable event log viewer with HIPAA-compliant export capabilities." />} />
-            <Route path="/admin/settings" element={<PlaceholderPage title="Platform Settings" description="Global configuration, billing, and cluster resource management." />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/data" element={<DataManager />} />
+              <Route path="/pipeline" element={<PipelineBuilder />} />
+              <Route path="/experiments" element={<MLExperiments />} />
+              <Route path="/results" element={<ResultsExplorer />} />
+              <Route path="/xai" element={<XAIReports />} />
+              <Route path="/workflows" element={<PlaceholderPage title="Workflow Export" description="Download and publish reproducible workflow manifests in Nextflow, Snakemake, and CWL formats." />} />
+              <Route path="/admin/team" element={<PlaceholderPage title="Team & Access" description="Manage team members, roles, and SSO configuration for your organization." />} />
+              <Route path="/admin/audit" element={<PlaceholderPage title="Audit Log" description="Immutable event log viewer with HIPAA-compliant export capabilities." />} />
+              <Route path="/admin/settings" element={<PlaceholderPage title="Platform Settings" description="Global configuration, billing, and cluster resource management." />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
