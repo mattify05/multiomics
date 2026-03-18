@@ -13,6 +13,8 @@ import MLExperiments from "./pages/MLExperiments";
 import ResultsExplorer from "./pages/ResultsExplorer";
 import XAIReports from "./pages/XAIReports";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import TeamAccess from "./pages/TeamAccess";
+import AuditLog from "./pages/AuditLog";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
