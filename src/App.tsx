@@ -13,6 +13,8 @@ import MLExperiments from "./pages/MLExperiments";
 import ResultsExplorer from "./pages/ResultsExplorer";
 import XAIReports from "./pages/XAIReports";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import TeamAccess from "./pages/TeamAccess";
+import AuditLog from "./pages/AuditLog";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -41,8 +43,8 @@ const App = () => (
               <Route path="/results" element={<ResultsExplorer />} />
               <Route path="/xai" element={<XAIReports />} />
               <Route path="/workflows" element={<PlaceholderPage title="Workflow Export" description="Download and publish reproducible workflow manifests in Nextflow, Snakemake, and CWL formats." />} />
-              <Route path="/admin/team" element={<PlaceholderPage title="Team & Access" description="Manage team members, roles, and SSO configuration for your organization." />} />
-              <Route path="/admin/audit" element={<PlaceholderPage title="Audit Log" description="Immutable event log viewer with HIPAA-compliant export capabilities." />} />
+              <Route path="/admin/team" element={<TeamAccess />} />
+              <Route path="/admin/audit" element={<AuditLog />} />
               <Route path="/admin/settings" element={<PlaceholderPage title="Platform Settings" description="Global configuration, billing, and cluster resource management." />} />
             </Route>
             <Route path="*" element={<NotFound />} />
