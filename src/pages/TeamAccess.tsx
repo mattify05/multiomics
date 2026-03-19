@@ -17,6 +17,18 @@ interface TeamMember {
   role_id: string;
 }
 
+const rolePriority: Record<AppRole, number> = {
+  lab_owner: 3,
+  analyst: 2,
+  viewer: 1,
+};
+
+function pickPrimaryRole(roles: Array<{ id: string; user_id: string; role: AppRole }>, userId: string) {
+  const userRoles = roles.filter((r) => r.user_id === userId);
+  if (userRoles.length === 0) return null;
+  return userRoles.reduce((best, cur) => (rolePriority[cur.role] > rolePriority[best.role] ? cur : best));
+}
+
 const roleConfig: Record<AppRole, { label: string; color: string; description: string }> = {
   lab_owner: {
     label: "Lab Owner",
@@ -68,15 +80,15 @@ export default function TeamAccess() {
     }
 
     const merged: TeamMember[] = (profiles ?? []).map((p) => {
-      const userRole = roles?.find((r) => r.user_id === p.id);
+      const primary = roles ? pickPrimaryRole(roles as Array<{ id: string; user_id: string; role: AppRole }>, p.id) : null;
       return {
         id: p.id,
         email: p.email,
         full_name: p.full_name,
         avatar_url: p.avatar_url,
         created_at: p.created_at,
-        role: (userRole?.role as AppRole) ?? "viewer",
-        role_id: userRole?.id ?? "",
+        role: primary?.role ?? "viewer",
+        role_id: primary?.id ?? "",
       };
     });
 
@@ -85,24 +97,62 @@ export default function TeamAccess() {
   };
 
   useEffect(() => {
+    if (!isLabOwner) {
+      setLoading(false);
+      return;
+    }
     fetchMembers();
-  }, []);
+  }, [isLabOwner]);
 
   const handleRoleChange = async (member: TeamMember, newRole: AppRole) => {
     if (!isLabOwner) return;
     setChangingRole(member.id);
 
-    const { error } = await supabase
-      .from("user_roles")
-      .update({ role: newRole })
-      .eq("user_id", member.id);
+    // The DB schema supports multiple roles per user, but the UI is single-role.
+    // We enforce single-role behavior here by:
+    // - updating the chosen role row if present (role_id)
+    // - otherwise inserting a role row
+    // - then removing any other role rows for that user
+    let roleRowId = member.role_id;
 
-    if (error) {
-      toast({ title: "Error updating role", description: error.message, variant: "destructive" });
+    if (roleRowId) {
+      const { error } = await supabase
+        .from("user_roles")
+        .update({ role: newRole })
+        .eq("id", roleRowId);
+      if (error) {
+        toast({ title: "Error updating role", description: error.message, variant: "destructive" });
+        setChangingRole(null);
+        return;
+      }
+    } else {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .insert({ user_id: member.id, role: newRole })
+        .select("id")
+        .single();
+      if (error) {
+        toast({ title: "Error updating role", description: error.message, variant: "destructive" });
+        setChangingRole(null);
+        return;
+      }
+      roleRowId = (data as { id: string }).id;
+    }
+
+    // Remove any extra roles for the user (keep the one we just set).
+    // This ensures the rest of the app behaves consistently with a single primary role.
+    const { error: cleanupError } = await supabase
+      .from("user_roles")
+      .delete()
+      .eq("user_id", member.id)
+      .neq("id", roleRowId);
+
+    if (cleanupError) {
+      toast({ title: "Role updated (cleanup warning)", description: cleanupError.message, variant: "destructive" });
     } else {
       toast({ title: "Role updated", description: `${member.full_name || member.email} is now ${roleConfig[newRole].label}` });
       setMembers((prev) =>
-        prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m))
+        prev.map((m) => (m.id === member.id ? { ...m, role: newRole, role_id: roleRowId } : m))
       );
     }
     setChangingRole(null);
@@ -210,6 +260,7 @@ export default function TeamAccess() {
                           value={member.role}
                           onChange={(e) => handleRoleChange(member, e.target.value as AppRole)}
                           disabled={changingRole === member.id}
+                          aria-label="Change member role"
                           className={`appearance-none rounded-full border px-3 py-1 pr-7 text-[11px] font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary ${roleConfig[member.role].color} bg-transparent`}
                         >
                           <option value="lab_owner">Lab Owner</option>

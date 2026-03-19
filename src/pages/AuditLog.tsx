@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Shield, Search, Download, Filter, ChevronDown, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -147,6 +147,7 @@ export default function AuditLog() {
               <select
                 value={tableFilter}
                 onChange={(e) => setTableFilter(e.target.value)}
+                aria-label="Filter by table"
                 className="appearance-none rounded-lg border border-border bg-secondary/50 px-3 py-2 pr-8 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {tableOptions.map((t) => (
@@ -160,6 +161,7 @@ export default function AuditLog() {
               <select
                 value={actionFilter}
                 onChange={(e) => setActionFilter(e.target.value)}
+                aria-label="Filter by action"
                 className="appearance-none rounded-lg border border-border bg-secondary/50 px-3 py-2 pr-8 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {actionOptions.map((a) => (
@@ -196,9 +198,8 @@ export default function AuditLog() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((entry) => (
-                <>
+                <Fragment key={entry.id}>
                   <tr
-                    key={entry.id}
                     onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
                     className="hover:bg-secondary/20 transition-colors cursor-pointer"
                   >
@@ -222,7 +223,7 @@ export default function AuditLog() {
                     </td>
                   </tr>
                   {expandedId === entry.id && (
-                    <tr key={`${entry.id}-detail`}>
+                    <tr>
                       <td colSpan={6} className="px-4 py-4 bg-secondary/10">
                         <div className="grid grid-cols-2 gap-4">
                           {entry.old_data && (
@@ -245,7 +246,7 @@ export default function AuditLog() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
