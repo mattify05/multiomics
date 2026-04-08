@@ -17,6 +17,7 @@ export type Database = {
       audit_log: {
         Row: {
           action: string
+          client_request_id: string | null
           created_at: string
           id: string
           ip_address: string | null
@@ -28,6 +29,7 @@ export type Database = {
         }
         Insert: {
           action: string
+          client_request_id?: string | null
           created_at?: string
           id?: string
           ip_address?: string | null
@@ -39,6 +41,7 @@ export type Database = {
         }
         Update: {
           action?: string
+          client_request_id?: string | null
           created_at?: string
           id?: string
           ip_address?: string | null
@@ -50,6 +53,36 @@ export type Database = {
         }
         Relationships: []
       }
+      dataset_samples: {
+        Row: {
+          dataset_id: string
+          sample_id: string
+        }
+        Insert: {
+          dataset_id: string
+          sample_id: string
+        }
+        Update: {
+          dataset_id?: string
+          sample_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dataset_samples_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dataset_samples_sample_id_fkey"
+            columns: ["sample_id"]
+            isOneToOne: false
+            referencedRelation: "samples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       datasets: {
         Row: {
           cohort: string | null
@@ -60,8 +93,10 @@ export type Database = {
           metadata: Json | null
           modality: string
           name: string
+          organization_id: string | null
           samples: number | null
           status: string
+          study_id: string | null
           updated_at: string
           user_id: string
         }
@@ -74,8 +109,10 @@ export type Database = {
           metadata?: Json | null
           modality?: string
           name: string
+          organization_id?: string | null
           samples?: number | null
           status?: string
+          study_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -88,8 +125,10 @@ export type Database = {
           metadata?: Json | null
           modality?: string
           name?: string
+          organization_id?: string | null
           samples?: number | null
           status?: string
+          study_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -150,6 +189,62 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      organization_members: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          slug: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          slug?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          slug?: string | null
+        }
+        Relationships: []
       }
       pipeline_runs: {
         Row: {
@@ -257,6 +352,80 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      samples: {
+        Row: {
+          biospecimen_id: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          study_id: string
+          subject_id: string
+          timepoint: string
+          user_id: string
+        }
+        Insert: {
+          biospecimen_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          study_id: string
+          subject_id: string
+          timepoint?: string
+          user_id: string
+        }
+        Update: {
+          biospecimen_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          study_id?: string
+          subject_id?: string
+          timepoint?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "samples_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studies: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          metadata: Json | null
+          name: string
+          organization_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          name: string
+          organization_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string
+          organization_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

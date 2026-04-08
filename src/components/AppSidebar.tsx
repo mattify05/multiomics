@@ -11,6 +11,7 @@ import {
   Settings,
   Dna,
   LogOut,
+  Microscope,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -32,6 +33,7 @@ import {
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Data Manager", url: "/data", icon: Database },
+  { title: "Studies", url: "/studies", icon: Microscope },
   { title: "Pipeline Builder", url: "/pipeline", icon: GitBranch },
   { title: "ML Experiments", url: "/experiments", icon: FlaskConical },
   { title: "Results Explorer", url: "/results", icon: BarChart3 },

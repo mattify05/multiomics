@@ -13,6 +13,9 @@ import MLExperiments from "./pages/MLExperiments";
 import ResultsExplorer from "./pages/ResultsExplorer";
 import XAIReports from "./pages/XAIReports";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import WorkflowExport from "./pages/WorkflowExport";
+import Studies from "./pages/Studies";
+import Trust from "./pages/Trust";
 import TeamAccess from "./pages/TeamAccess";
 import AuditLog from "./pages/AuditLog";
 import Login from "./pages/Login";
@@ -35,6 +38,7 @@ const App = () => (
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/trust" element={<Trust />} />
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/data" element={<DataManager />} />
@@ -42,7 +46,8 @@ const App = () => (
               <Route path="/experiments" element={<MLExperiments />} />
               <Route path="/results" element={<ResultsExplorer />} />
               <Route path="/xai" element={<XAIReports />} />
-              <Route path="/workflows" element={<PlaceholderPage title="Workflow Export" description="Download and publish reproducible workflow manifests in Nextflow, Snakemake, and CWL formats." />} />
+              <Route path="/workflows" element={<WorkflowExport />} />
+              <Route path="/studies" element={<Studies />} />
               <Route path="/admin/team" element={<TeamAccess />} />
               <Route path="/admin/audit" element={<AuditLog />} />
               <Route path="/admin/settings" element={<PlaceholderPage title="Platform Settings" description="Global configuration, billing, and cluster resource management." />} />

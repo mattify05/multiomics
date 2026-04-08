@@ -47,7 +47,11 @@ export default function Login() {
           </p>
         </div>
         <p className="relative z-10 text-sm text-muted-foreground">
-          HIPAA-compliant · SOC 2 · End-to-end encryption
+          Security model: Supabase Auth, RLS, Storage policies.{" "}
+          <Link to="/trust" className="text-primary hover:underline">
+            Compliance scope
+          </Link>
+          .
         </p>
       </div>
 

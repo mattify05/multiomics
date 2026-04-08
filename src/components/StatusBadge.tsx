@@ -1,12 +1,13 @@
 import { cn } from "@/lib/utils";
 
-type Status = "running" | "completed" | "failed" | "queued" | "validated" | "warning" | "draft";
+type Status = "running" | "completed" | "failed" | "queued" | "pending" | "validated" | "warning" | "draft";
 
 const statusStyles: Record<Status, string> = {
   running: "bg-info/15 text-info border-info/30",
   completed: "bg-success/15 text-success border-success/30",
   failed: "bg-destructive/15 text-destructive border-destructive/30",
   queued: "bg-muted text-muted-foreground border-border",
+  pending: "bg-muted text-muted-foreground border-border",
   validated: "bg-success/15 text-success border-success/30",
   warning: "bg-warning/15 text-warning border-warning/30",
   draft: "bg-secondary text-secondary-foreground border-border",
@@ -26,6 +27,7 @@ export function StatusBadge({ status }: { status: Status }) {
         status === "completed" && "bg-success",
         status === "failed" && "bg-destructive",
         status === "queued" && "bg-muted-foreground",
+        status === "pending" && "bg-muted-foreground",
         status === "validated" && "bg-success",
         status === "warning" && "bg-warning",
         status === "draft" && "bg-secondary-foreground",

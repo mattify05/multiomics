@@ -6,6 +6,7 @@ import { Outlet, useLocation } from "react-router-dom";
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
   "/data": "Data Manager",
+  "/studies": "Studies & Samples",
   "/pipeline": "Pipeline Builder",
   "/experiments": "ML Experiment Centre",
   "/results": "Results Explorer",
