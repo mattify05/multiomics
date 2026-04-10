@@ -1,0 +1,31 @@
+# Registry for spatial training — fill in exact URLs after you accept each site's terms.
+# Priority: 10x Visium (labeled / rich metadata) -> Stereo-seq brain -> Dryad MERFISH (transfer).
+
+cohorts:
+  - id: tenx_visium_breast
+    platform: 10x_visium
+    source: 10x_genomics
+    role: train_val
+    notes: Search 10x Genomics resource datasets for Visium breast cancer; download full outs bundle.
+    suggested_use: Sprint 1–2 primary; niche + QC baselines
+
+  - id: tenx_visium_brain
+    platform: 10x_visium
+    source: 10x_genomics
+    role: train_val
+    notes: Human or mouse brain Visium for domain structure and subgroup metrics.
+    suggested_use: Sprint 1–2; subgroup by structure/region if annotated
+
+  - id: stereo_seq_mouse_brain
+    platform: stereo_seq
+    source: cns_lifetech
+    role: ood_test
+    notes: High-resolution mouse brain from BGI Stereo-seq portal; harmonize coordinates to obsm spatial.
+    suggested_use: Sprint 4 cross-platform benchmark vs 10x
+
+  - id: dryad_merfish_transfer
+    platform: merfish
+    source: datadryad
+    role: tech_transfer_test
+    notes: Pick MERFISH datasets with published gene panel CSV + cell labels; expect panel mismatch vs Visium.
+    suggested_use: Sprint 4 only after gene intersection mapping

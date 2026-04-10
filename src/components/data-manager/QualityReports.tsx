@@ -4,6 +4,7 @@ import type { Dataset } from "@/pages/DataManager";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { invokePipelineOrchestrator } from "@/lib/orchestrator";
 
 interface QualityReportsProps {
   datasets: Dataset[];
@@ -44,6 +45,7 @@ export function QualityReports({ datasets }: QualityReportsProps) {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [queueing, setQueueing] = useState(false);
 
   const selected = datasets.find((d) => d.id === selectedId);
 
@@ -112,6 +114,27 @@ export function QualityReports({ datasets }: QualityReportsProps) {
     }
   };
 
+  const queueAsyncQc = async () => {
+    if (!selected) return;
+    setQueueing(true);
+    try {
+      await invokePipelineOrchestrator(supabase, {
+        action: "launch_qc_job",
+        dataset_id: selected.id,
+        dataset_name: selected.name,
+      });
+      toast({
+        title: "QC queued",
+        description: "Async MultiQC placeholder job has been queued. Worker integration can append logs in jobs table.",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Queue failed";
+      toast({ title: "Queue failed", description: msg, variant: "destructive" });
+    } finally {
+      setQueueing(false);
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-xl border border-border bg-card p-8">
       <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
@@ -164,6 +187,14 @@ export function QualityReports({ datasets }: QualityReportsProps) {
             >
       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save to dataset metadata
+            </button>
+            <button
+              type="button"
+              onClick={queueAsyncQc}
+              disabled={!selectedId || queueing}
+              className="rounded-lg border border-info/40 bg-info/10 px-4 py-2 text-sm text-info disabled:opacity-50"
+            >
+              {queueing ? "Queueing…" : "Queue async MultiQC job"}
             </button>
           </div>
         </div>

@@ -1,14 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { StatusBadge } from "@/components/StatusBadge";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Search, Download, Eye, Plus, Database as DbIcon, ChevronDown, Trash2, Loader2, FileUp } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DatasetUploadForm } from "@/components/data-manager/DatasetUploadForm";
 import { DatasetLibrary } from "@/components/data-manager/DatasetLibrary";
 import { QualityReports } from "@/components/data-manager/QualityReports";
+import { useStudyContext } from "@/contexts/StudyContext";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export type Dataset = {
   id: string;
@@ -21,38 +21,78 @@ export type Dataset = {
   status: string;
   file_path: string | null;
   user_id: string;
+  study_id: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
 export default function DataManager() {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("library");
-  const { user } = useAuth();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { selectedStudyId } = useStudyContext();
+  const queryClient = useQueryClient();
+  const [geoAccession, setGeoAccession] = useState("");
 
-  const fetchDatasets = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("datasets")
-      .select("id, name, modality, cohort, samples, features, created_at, status, file_path, user_id, metadata")
-      .order("created_at", { ascending: false });
+  const datasetsQuery = useQuery({
+    queryKey: ["datasets", selectedStudyId ?? "all"],
+    queryFn: async () => {
+      let query = supabase
+        .from("datasets")
+        .select("id, name, modality, cohort, samples, features, created_at, status, file_path, user_id, study_id, metadata")
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      toast({ title: "Error loading datasets", description: error.message, variant: "destructive" });
-    } else {
-      setDatasets(data || []);
-    }
-    setLoading(false);
-  };
+      if (selectedStudyId) {
+        query = query.eq("study_id", selectedStudyId);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as Dataset[];
+    },
+  });
 
-  useEffect(() => {
-    fetchDatasets();
-  }, []);
+  const invalidateDatasets = useMutation({
+    mutationFn: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["datasets"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Refresh failed", description: error.message, variant: "destructive" });
+    },
+  });
 
   const handleUploadSuccess = () => {
-    fetchDatasets();
+    void invalidateDatasets.mutateAsync();
     setActiveTab("library");
+  };
+
+  const handleGeoImport = async () => {
+    const trimmed = geoAccession.trim().toUpperCase();
+    if (!trimmed) return;
+    if (!user) return;
+    if (!trimmed.startsWith("GSE")) {
+      toast({ title: "Invalid accession", description: "Use a GEO series accession like GSE12345.", variant: "destructive" });
+      return;
+    }
+    const { error } = await supabase.from("datasets").insert({
+      name: trimmed,
+      modality: "Genomics",
+      status: "draft",
+      cohort: "Public GEO",
+      user_id: user.id,
+      study_id: selectedStudyId ?? null,
+      metadata: {
+        source: "GEO",
+        accession: trimmed,
+        import_status: "manifest_pending",
+        import_note: "MVP stub row created. Hook worker/edge function for manifest fetch next.",
+      },
+    });
+    if (error) {
+      toast({ title: "Import failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    setGeoAccession("");
+    await queryClient.invalidateQueries({ queryKey: ["datasets"] });
+    toast({ title: "Accession registered", description: `${trimmed} added as pending public dataset import.` });
   };
 
   return (
@@ -66,20 +106,20 @@ export default function DataManager() {
         </TabsList>
 
         <TabsContent value="upload" className="mt-6">
-          <DatasetUploadForm onSuccess={handleUploadSuccess} />
+          <DatasetUploadForm onSuccess={handleUploadSuccess} selectedStudyId={selectedStudyId} />
         </TabsContent>
 
         <TabsContent value="library" className="mt-6">
           <DatasetLibrary
-            datasets={datasets}
-            loading={loading}
-            onRefresh={fetchDatasets}
+            datasets={datasetsQuery.data ?? []}
+            loading={datasetsQuery.isLoading}
+            onRefresh={() => invalidateDatasets.mutateAsync()}
             onSwitchToUpload={() => setActiveTab("upload")}
           />
         </TabsContent>
 
         <TabsContent value="quality" className="mt-6">
-          <QualityReports datasets={datasets} />
+          <QualityReports datasets={datasetsQuery.data ?? []} />
         </TabsContent>
 
         <TabsContent value="integrations" className="mt-6">
@@ -110,6 +150,24 @@ export default function DataManager() {
               Programmatic access: use Supabase Edge Functions or a worker with service credentials to pull by accession, write to Storage, then
               insert dataset rows — keep JWT-scoped reads in the browser.
             </p>
+            <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
+              <p className="text-sm font-medium text-foreground">GEO accession import (MVP)</p>
+              <div className="flex gap-2">
+                <input
+                  value={geoAccession}
+                  onChange={(event) => setGeoAccession(event.target.value)}
+                  placeholder="GSE12345"
+                  className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleGeoImport()}
+                  className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Register
+                </button>
+              </div>
+            </div>
           </motion.div>
         </TabsContent>
       </Tabs>

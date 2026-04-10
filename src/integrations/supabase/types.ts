@@ -190,6 +190,66 @@ export type Database = {
           },
         ]
       }
+      jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          experiment_id: string | null
+          id: string
+          logs: Json | null
+          pipeline_run_id: string | null
+          started_at: string | null
+          status: string
+          type: string
+          updated_at: string
+          user_id: string
+          worker_version: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          experiment_id?: string | null
+          id?: string
+          logs?: Json | null
+          pipeline_run_id?: string | null
+          started_at?: string | null
+          status?: string
+          type: string
+          updated_at?: string
+          user_id: string
+          worker_version?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          experiment_id?: string | null
+          id?: string
+          logs?: Json | null
+          pipeline_run_id?: string | null
+          started_at?: string | null
+          status?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+          worker_version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_pipeline_run_id_fkey"
+            columns: ["pipeline_run_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_members: {
         Row: {
           created_at: string

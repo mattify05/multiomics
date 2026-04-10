@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { StatusBadge } from "@/components/StatusBadge";
 import { FlaskConical, Play, ChevronDown, BarChart3, Loader2 } from "lucide-react";
@@ -10,6 +10,9 @@ import { finalizeExperimentWithDemoArtifacts } from "@/lib/demoArtifacts";
 import { formatRelativeTime } from "@/lib/format";
 import { buildModelCardMarkdown } from "@/lib/demoArtifacts";
 import { buildReproduceNotebookCell } from "@/lib/notebookExport";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useStudyContext } from "@/contexts/StudyContext";
+import { z } from "zod";
 
 const modelCatalogue = [
   { name: "MLP Late Fusion", type: "Classification", desc: "Multi-layer perceptron with modality-specific encoders" },
@@ -38,18 +41,41 @@ type ExperimentRow = {
   created_at: string;
   hyperparameters: Record<string, unknown> | null;
 };
+type JobRow = {
+  id: string;
+  type: string;
+  status: string;
+  experiment_id: string | null;
+  pipeline_run_id: string | null;
+  logs: Array<{ ts?: string; line?: string }> | null;
+  updated_at: string;
+};
 
 function normalizeExperimentStatus(s: string): "running" | "completed" | "failed" | "queued" | "pending" | "draft" {
   if (s === "running" || s === "completed" || s === "failed" || s === "queued" || s === "pending" || s === "draft") return s;
   return "queued";
 }
 
+const hyperparametersSchema = z.object({
+  target_variable: z.string().min(1),
+  feature_selection: z.string().min(1),
+  train_test_split: z.string().regex(/^\d{1,2}\/\d{1,2}$/),
+  automl: z.boolean(),
+  seed: z.number().int(),
+  cv_strategy: z.string().min(1),
+  stratify: z.boolean(),
+  class_weights: z.string(),
+  train_n: z.number().int().nonnegative().optional(),
+  val_n: z.number().int().nonnegative().optional(),
+  test_n: z.number().int().nonnegative().optional(),
+  label_column: z.string().min(1),
+});
+
 export default function MLExperiments() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [pipelines, setPipelines] = useState<PipelineRun[]>([]);
-  const [experiments, setExperiments] = useState<ExperimentRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { selectedStudyId } = useStudyContext();
+  const queryClient = useQueryClient();
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | "">("");
   const [selectedModel, setSelectedModel] = useState("XGBoost");
   const [experimentName, setExperimentName] = useState("");
@@ -59,23 +85,75 @@ export default function MLExperiments() {
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [selectedRunForChart, setSelectedRunForChart] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    const [pr, ex] = await Promise.all([
-      supabase.from("pipeline_runs").select("id, name, status, dataset_ids").order("created_at", { ascending: false }),
-      supabase.from("experiments").select("id, name, model, status, metrics, pipeline_run_id, created_at, hyperparameters").order("created_at", { ascending: false }),
-    ]);
-    if (pr.error) toast({ title: "Pipelines", description: pr.error.message, variant: "destructive" });
-    if (ex.error) toast({ title: "Experiments", description: ex.error.message, variant: "destructive" });
-    setPipelines((pr.data as PipelineRun[]) ?? []);
-    setExperiments((ex.data as ExperimentRow[]) ?? []);
-    setLoading(false);
-  };
+  const datasetsByStudyQuery = useQuery({
+    queryKey: ["dataset-ids-by-study", selectedStudyId ?? "all"],
+    queryFn: async () => {
+      if (!selectedStudyId) return null;
+      const { data, error } = await supabase.from("datasets").select("id").eq("study_id", selectedStudyId);
+      if (error) throw error;
+      return new Set((data ?? []).map((row) => row.id));
+    },
+  });
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
-  }, []);
+  const pipelinesQuery = useQuery({
+    queryKey: ["pipeline-runs", selectedStudyId ?? "all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pipeline_runs")
+        .select("id, name, status, dataset_ids")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const rows = ((data ?? []) as PipelineRun[]);
+      if (!datasetsByStudyQuery.data) return rows;
+      return rows.filter((row) =>
+        (row.dataset_ids ?? []).some((id) => datasetsByStudyQuery.data?.has(id)),
+      );
+    },
+    enabled: !selectedStudyId || datasetsByStudyQuery.isSuccess,
+  });
+
+  const experimentsQuery = useQuery({
+    queryKey: ["experiments", selectedStudyId ?? "all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("experiments")
+        .select("id, name, model, status, metrics, pipeline_run_id, created_at, hyperparameters")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const rows = ((data ?? []) as ExperimentRow[]);
+      if (!selectedStudyId) return rows;
+      const allowed = new Set((pipelinesQuery.data ?? []).map((p) => p.id));
+      return rows.filter((row) => row.pipeline_run_id && allowed.has(row.pipeline_run_id));
+    },
+    enabled: pipelinesQuery.isSuccess,
+    refetchInterval: 5000,
+  });
+  const jobsQuery = useQuery({
+    queryKey: ["jobs", selectedStudyId ?? "all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("jobs")
+        .select("id, type, status, experiment_id, pipeline_run_id, logs, updated_at")
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as JobRow[]);
+    },
+    refetchInterval: 3000,
+  });
+
+  const pipelines = pipelinesQuery.data ?? [];
+  const experiments = experimentsQuery.data ?? [];
+  const jobs = jobsQuery.data ?? [];
+  const loading = pipelinesQuery.isLoading || experimentsQuery.isLoading;
+
+  const chartExperiment = useMemo(
+    () => experiments.find((e) => e.id === selectedRunForChart) ?? experiments[0] ?? null,
+    [experiments, selectedRunForChart],
+  );
+  const selectedJob = useMemo(() => {
+    if (!chartExperiment) return null;
+    return jobs.find((job) => job.experiment_id === chartExperiment.id) ?? null;
+  }, [chartExperiment, jobs]);
 
   useEffect(() => {
     if (!selectedPipelineId && pipelines.length > 0) {
@@ -98,7 +176,19 @@ export default function MLExperiments() {
       automl: false,
       seed: 42,
       cv_strategy: "5-fold CV (recommended)",
+      stratify: true,
+      class_weights: "balanced",
+      label_column: targetVariable,
     };
+    const validation = hyperparametersSchema.safeParse(hyperparameters);
+    if (!validation.success) {
+      toast({
+        title: "Invalid hyperparameters",
+        description: validation.error.issues.map((issue) => issue.message).join("; "),
+        variant: "destructive",
+      });
+      return;
+    }
     setLaunching(true);
     try {
       await invokePipelineOrchestrator(supabase, {
@@ -110,7 +200,10 @@ export default function MLExperiments() {
       });
       toast({ title: "Experiment started", description: name });
       setExperimentName("");
-      await load();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["experiments"] }),
+      ]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Could not launch";
       toast({ title: "Launch failed", description: msg, variant: "destructive" });
@@ -125,7 +218,7 @@ export default function MLExperiments() {
     try {
       await finalizeExperimentWithDemoArtifacts(supabase, { experimentId: exp.id, userId: user.id });
       toast({ title: "Artifacts saved", description: "Evaluation + XAI results stored. Open Results / XAI Reports." });
-      await load();
+      await queryClient.invalidateQueries({ queryKey: ["experiments"] });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Finalize failed";
       toast({ title: "Finalize failed", description: msg, variant: "destructive" });
@@ -165,8 +258,6 @@ export default function MLExperiments() {
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  const chartExperiment = experiments.find((e) => e.id === selectedRunForChart);
 
   return (
     <div className="p-6 animate-fade-in">
@@ -278,7 +369,10 @@ export default function MLExperiments() {
               <h3 className="font-display font-semibold text-foreground">Experiment Runs</h3>
               <button
                 type="button"
-                onClick={() => load()}
+                onClick={() => {
+                  void queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] });
+                  void queryClient.invalidateQueries({ queryKey: ["experiments"] });
+                }}
                 className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors flex items-center gap-1.5"
               >
                 <BarChart3 className="h-3.5 w-3.5" /> Refresh
@@ -367,22 +461,38 @@ export default function MLExperiments() {
             {!chartExperiment ? (
               <p className="text-sm text-muted-foreground">Select an experiment row. When status is running, use a real training worker to stream metrics here.</p>
             ) : (
-              <div className="flex items-end gap-1 h-32">
-                {Array.from({ length: 20 }, (_, i) => {
-                  const height =
-                    chartExperiment.status === "completed"
-                      ? 40 + ((i * 13) % 37)
-                      : chartExperiment.status === "running"
-                        ? 25 + ((i * 17) % 50)
-                        : 20 + ((i * 11) % 30);
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 rounded-t bg-primary/30 hover:bg-primary/50 transition-colors"
-                      style={{ height: `${Math.min(height, 100)}%` }}
-                    />
-                  );
-                })}
+              <div className="space-y-3">
+                <div className="flex items-end gap-1 h-24">
+                  {Array.from({ length: 20 }, (_, i) => {
+                    const height =
+                      chartExperiment.status === "completed"
+                        ? 40 + ((i * 13) % 37)
+                        : chartExperiment.status === "running"
+                          ? 25 + ((i * 17) % 50)
+                          : 20 + ((i * 11) % 30);
+                    return (
+                      <div
+                        key={i}
+                        className="flex-1 rounded-t bg-primary/30 hover:bg-primary/50 transition-colors"
+                        style={{ height: `${Math.min(height, 100)}%` }}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="rounded-md border border-border bg-secondary/30 p-3">
+                  <p className="text-xs font-medium text-foreground mb-2">Worker logs</p>
+                  {selectedJob && selectedJob.logs && selectedJob.logs.length > 0 ? (
+                    <div className="max-h-36 overflow-auto space-y-1 text-xs font-mono text-muted-foreground">
+                      {selectedJob.logs.slice(-15).map((log, idx) => (
+                        <p key={`${selectedJob.id}-${idx}`}>
+                          [{log.ts ?? "ts"}] {log.line ?? ""}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No worker logs yet for this experiment.</p>
+                  )}
+                </div>
               </div>
             )}
           </motion.div>

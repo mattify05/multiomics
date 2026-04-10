@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { Plus, Loader2 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
+import { useStudyContext } from "@/contexts/StudyContext";
 
 type StudyRow = Database["public"]["Tables"]["studies"]["Row"];
 type SampleRow = Database["public"]["Tables"]["samples"]["Row"];
@@ -19,6 +20,7 @@ export default function Studies() {
   const [studyName, setStudyName] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [timepoint, setTimepoint] = useState("");
+  const { selectedStudyId: globalStudyId, setSelectedStudyId: setGlobalStudyId } = useStudyContext();
 
   const loadStudies = async () => {
     const { data, error } = await supabase.from("studies").select("*").order("created_at", { ascending: false });
@@ -27,7 +29,9 @@ export default function Studies() {
       return;
     }
     setStudies((data as StudyRow[]) ?? []);
-    setSelectedStudyId((prev) => prev || (data as StudyRow[])?.[0]?.id || "");
+    const first = (data as StudyRow[])?.[0]?.id || "";
+    setSelectedStudyId((prev) => prev || globalStudyId || first);
+    if (!globalStudyId && first) setGlobalStudyId(first);
   };
 
   const loadSamples = async (studyId: string) => {
@@ -54,17 +58,26 @@ export default function Studies() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when study selection changes only
   }, [selectedStudyId]);
 
+  useEffect(() => {
+    if (globalStudyId && globalStudyId !== selectedStudyId) setSelectedStudyId(globalStudyId);
+  }, [globalStudyId, selectedStudyId]);
+
   const createStudy = async () => {
     if (!user || !studyName.trim()) return;
-    const { error } = await supabase.from("studies").insert({
-      user_id: user.id,
-      name: studyName.trim(),
-      description: null,
-    });
+    const { data, error } = await supabase
+      .from("studies")
+      .insert({
+        user_id: user.id,
+        name: studyName.trim(),
+        description: null,
+      })
+      .select("id")
+      .single();
     if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
     else {
       toast({ title: "Study created" });
       setStudyName("");
+      if (data?.id) setGlobalStudyId(data.id);
       await loadStudies();
     }
   };
@@ -119,7 +132,10 @@ export default function Studies() {
                 <li key={s.id}>
                   <button
                     type="button"
-                    onClick={() => setSelectedStudyId(s.id)}
+                    onClick={() => {
+                      setSelectedStudyId(s.id);
+                      setGlobalStudyId(s.id);
+                    }}
                     className={`w-full text-left rounded-md px-2 py-1.5 ${selectedStudyId === s.id ? "bg-primary/15 text-primary" : "hover:bg-secondary"}`}
                   >
                     {s.name}

@@ -29,6 +29,7 @@ export default function PipelineBuilder() {
   const [datasets, setDatasets] = useState<DatasetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [datasetSampleLinks, setDatasetSampleLinks] = useState<Record<string, Set<string>>>({});
   const [launching, setLaunching] = useState(false);
   const [runName, setRunName] = useState("");
   const [runDescription, setRunDescription] = useState("");
@@ -59,10 +60,52 @@ export default function PipelineBuilder() {
   const selectedList = useMemo(() => datasets.filter((d) => selectedIds.has(d.id)), [datasets, selectedIds]);
 
   const overlapEstimate = useMemo(() => {
+    const selectedWithLinks = selectedList.filter((dataset) => (datasetSampleLinks[dataset.id]?.size ?? 0) > 0);
+    if (selectedWithLinks.length >= 2) {
+      let intersection: Set<string> | null = null;
+      for (const dataset of selectedWithLinks) {
+        const ids = datasetSampleLinks[dataset.id] ?? new Set<string>();
+        if (!intersection) {
+          intersection = new Set(ids);
+          continue;
+        }
+        intersection = new Set([...intersection].filter((id) => ids.has(id)));
+      }
+      return intersection?.size ?? null;
+    }
     const counts = selectedList.map((d) => d.samples ?? 0).filter((n) => n > 0);
     if (counts.length < 2) return null;
     return Math.min(...counts);
-  }, [selectedList]);
+  }, [datasetSampleLinks, selectedList]);
+
+  useEffect(() => {
+    const selected = Array.from(selectedIds);
+    if (selected.length < 2) {
+      setDatasetSampleLinks({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("dataset_samples")
+        .select("dataset_id, sample_id")
+        .in("dataset_id", selected);
+      if (cancelled) return;
+      if (error) {
+        toast({ title: "Sample lineage", description: error.message, variant: "destructive" });
+        return;
+      }
+      const next: Record<string, Set<string>> = {};
+      for (const row of data ?? []) {
+        if (!next[row.dataset_id]) next[row.dataset_id] = new Set();
+        next[row.dataset_id].add(row.sample_id);
+      }
+      setDatasetSampleLinks(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIds, toast]);
 
   const toggleDataset = (id: string) => {
     setSelectedIds((prev) => {
@@ -184,8 +227,8 @@ export default function PipelineBuilder() {
           <div className="rounded-xl border border-border bg-card p-5">
             <h3 className="font-display font-semibold text-sm text-foreground mb-2">Sample overlap (estimate)</h3>
             <p className="text-xs text-muted-foreground mb-2">
-              Until <Link to="/studies" className="text-primary underline">sample registry</Link> links assays, overlap is approximated from the
-              smallest sample count among selected datasets.
+              Overlap uses linked sample manifests from <Link to="/studies" className="text-primary underline">study registry</Link> when available;
+              otherwise it falls back to the smallest sample-count heuristic.
             </p>
             <div className="flex items-center gap-6">
               <div className="flex items-baseline gap-2">
