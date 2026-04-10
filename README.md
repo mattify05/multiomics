@@ -235,6 +235,13 @@ Common causes:
 - Only users with role `lab_owner` can access team management and audit log data.
 - If a lab owner expects to see other profiles but cannot, verify `profiles` RLS policy and role assignment in `user_roles`.
 
+## Spatial transcriptomics (Phase 3)
+
+- **UI**: **Spatial Studio** at `/spatial` (sidebar). Set optional `VITE_SPATIAL_API_URL` (e.g. `http://localhost:8787`) to call the Python service; without it, the page uses embedded demo artifacts.
+- **Python service**: See [`ml/README_SPATIAL.md`](ml/README_SPATIAL.md). Install [`ml/requirements-spatial.txt`](ml/requirements-spatial.txt), set `PYTHONPATH` to the repo root, then run `uvicorn ml.api.main:app --port 8787`.
+- **Data pack**: Curated download guidance and registry live under [`ml/data_pack/`](ml/data_pack/).
+- **Edge function**: Optional `ML_SPATIAL_API_URL` on `pipeline-orchestrator` forwards `dispatch_spatial` to the same API.
+
 ## Security notes
 
 - Never place **service role keys** in the frontend. Use anon keys in client code.

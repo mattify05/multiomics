@@ -16,7 +16,15 @@ type ExperimentOpt = {
   hyperparameters: Record<string, unknown> | null;
 };
 
-type ShapRow = { name: string; shap: number; direction: "positive" | "negative" };
+type ShapRow = {
+  name: string;
+  shap: number;
+  direction: "positive" | "negative";
+  feature_id?: string;
+  gene_symbol?: string;
+  uniprot?: string;
+  hmdb?: string;
+};
 type PathwayRow = { name: string; genes: number; fdr: number; shapRank: number };
 
 const defaultShap: ShapRow[] = [
@@ -147,11 +155,15 @@ export default function XAIReports() {
                   <a
                     href={stringProteinSearchUrl(f.name)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="text-xs font-mono text-primary w-28 truncate hover:underline"
+                    title={f.feature_id ?? f.gene_symbol ?? f.uniprot ?? f.hmdb ?? f.name}
                   >
-                    {f.name}
+                    {f.gene_symbol ?? f.name}
                   </a>
+                  <span className="text-[10px] text-muted-foreground w-32 truncate">
+                    {f.feature_id ?? f.uniprot ?? f.hmdb ?? "unmapped"}
+                  </span>
                   <div className="flex-1 h-4 rounded bg-secondary overflow-hidden relative">
                     <div
                       className={`h-full rounded ${f.direction === "positive" ? "bg-primary/50" : "bg-warning/50"}`}
@@ -210,7 +222,7 @@ export default function XAIReports() {
                         <a
                           href={reactomeSearchUrl(p.name)}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           className="inline-flex text-primary hover:text-primary/80"
                           aria-label={`Open ${p.name} in Reactome`}
                         >

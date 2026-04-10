@@ -57,6 +57,16 @@ export default function ResultsExplorer() {
   const topFeatures =
     (evaluation?.data?.top_features as Array<{ name: string; modality: string; importance: number }> | undefined) ??
     [];
+  const prCurve =
+    (evaluation?.data?.pr_curve as Array<{ recall: number; precision: number }> | undefined) ??
+    [];
+  const calibration =
+    (evaluation?.data?.calibration_bins as Array<{ bin: string; predicted: number; observed: number }> | undefined) ??
+    [];
+  const subgroup =
+    (evaluation?.data?.subgroup_metrics as Array<{ subgroup: string; auc?: number; f1?: number; n?: number }> | undefined) ??
+    [];
+  const leakageOverlap = typeof evaluation?.data?.train_test_overlap === "number" ? evaluation.data.train_test_overlap : null;
 
   const defaultUmap = () =>
     Array.from({ length: 40 }, (_, i) => ({
@@ -196,6 +206,74 @@ export default function ResultsExplorer() {
             </div>
             {metrics?.warnings && Array.isArray(metrics.warnings) && (metrics.warnings as string[]).length > 0 && (
               <p className="text-[10px] text-warning mt-2">{(metrics.warnings as string[]).join(" ")}</p>
+            )}
+            {leakageOverlap != null && leakageOverlap > 0 && (
+              <p className="text-[10px] text-destructive mt-2">
+                Leakage warning: {leakageOverlap} sample IDs overlap train/test split.
+              </p>
+            )}
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="rounded-xl border border-border bg-card p-5">
+            <h3 className="font-display font-semibold text-sm text-foreground mb-4">PR Curve</h3>
+            {prCurve.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No PR data yet. Store `pr_curve` in evaluation payload.</p>
+            ) : (
+              <div className="h-52 bg-secondary/20 rounded-lg overflow-hidden relative">
+                <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+                  <polyline
+                    points={prCurve.map((point) => `${point.recall * 100},${100 - point.precision * 100}`).join(" ")}
+                    fill="none"
+                    stroke="hsl(185, 72%, 48%)"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+              </div>
+            )}
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="rounded-xl border border-border bg-card p-5">
+            <h3 className="font-display font-semibold text-sm text-foreground mb-4">Calibration</h3>
+            {calibration.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No calibration bins in evaluation payload.</p>
+            ) : (
+              <div className="space-y-2">
+                {calibration.map((row) => (
+                  <div key={row.bin} className="text-xs flex items-center gap-3">
+                    <span className="w-20 text-muted-foreground">{row.bin}</span>
+                    <span className="font-mono text-foreground">pred {row.predicted.toFixed(2)}</span>
+                    <span className="font-mono text-muted-foreground">obs {row.observed.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="rounded-xl border border-border bg-card p-5">
+            <h3 className="font-display font-semibold text-sm text-foreground mb-4">Subgroup Metrics</h3>
+            {subgroup.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No subgroup evaluation yet (batch/site/sex).</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="text-left py-2">Subgroup</th>
+                    <th className="text-right py-2">N</th>
+                    <th className="text-right py-2">AUC</th>
+                    <th className="text-right py-2">F1</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subgroup.map((row) => (
+                    <tr key={row.subgroup} className="border-b border-border/50">
+                      <td className="py-1.5">{row.subgroup}</td>
+                      <td className="py-1.5 text-right font-mono">{row.n ?? "—"}</td>
+                      <td className="py-1.5 text-right font-mono">{row.auc?.toFixed(2) ?? "—"}</td>
+                      <td className="py-1.5 text-right font-mono">{row.f1?.toFixed(2) ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </motion.div>
         </div>
