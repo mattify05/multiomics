@@ -127,6 +127,11 @@ The edge function in `supabase/functions/pipeline-orchestrator/` expects:
 - `SUPABASE_URL`: Supabase project URL
 - `SUPABASE_ANON_KEY`: Supabase anon key (RLS enforced)
 
+Optional (tabular clinical-outcome training webhook):
+
+- `ML_TRAINING_WEBHOOK_URL`: full URL to `POST /internal/tabular/train` on the Python ML API (e.g. `https://your-worker/v1/internal/tabular/train`).
+- `ML_TRAINING_WEBHOOK_SECRET`: shared secret; must match `ML_TRAINING_WEBHOOK_SECRET` on the worker process.
+
 The function uses the caller’s JWT from the `Authorization` header and performs operations as that user.
 
 ## Database schema overview
@@ -235,12 +240,17 @@ Common causes:
 - Only users with role `lab_owner` can access team management and audit log data.
 - If a lab owner expects to see other profiles but cannot, verify `profiles` RLS policy and role assignment in `user_roles`.
 
+## Tabular ML training (clinical outcomes)
+
+- **Worker**: Same FastAPI app as spatial (`ml/api/main`). Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ML_TRAINING_WEBHOOK_SECRET`, then expose `POST /internal/tabular/train` at the URL configured in `ML_TRAINING_WEBHOOK_URL` on the edge function.
+- **Frontend**: Optional `VITE_TABULAR_TRAINING_ENABLED=true` shows a clearer “Finalize demo (synthetic)” label on ML Experiments when the real worker is expected to complete runs.
+
 ## Spatial transcriptomics (Phase 3)
 
 - **UI**: **Spatial Studio** at `/spatial` (sidebar). Set optional `VITE_SPATIAL_API_URL` (e.g. `http://localhost:8787`) to call the Python service; without it, the page uses embedded demo artifacts.
-- **Python service**: See [`ml/README_SPATIAL.md`](ml/README_SPATIAL.md). Install [`ml/requirements-spatial.txt`](ml/requirements-spatial.txt), set `PYTHONPATH` to the repo root, then run `uvicorn ml.api.main:app --port 8787`.
-- **Data pack**: Curated download guidance and registry live under [`ml/data_pack/`](ml/data_pack/).
-- **Edge function**: Optional `ML_SPATIAL_API_URL` on `pipeline-orchestrator` forwards `dispatch_spatial` to the same API.
+- **Python service**: See [`ml/README_SPATIAL.md`](ml/README_SPATIAL.md). Install [`ml/requirements-spatial.txt`](ml/requirements-spatial.txt), set `PYTHONPATH` to the repo root, then run `uvicorn ml.api.main:app --port 8787`. Large Visium HD `.h5ad` files should live **outside git** (e.g. `ml/data_pack/local/*.h5ad` is gitignored); use `max_obs` on the API or coarser bins for interactive runs — see [`ml/spatial/PERFORMANCE.md`](ml/spatial/PERFORMANCE.md).
+- **Data pack**: Curated download guidance and registry live under [`ml/data_pack/`](ml/data_pack/) (includes Visium HD Parquet → `.h5ad` conversion).
+- **Edge function**: Optional `ML_SPATIAL_API_URL` on `pipeline-orchestrator` forwards `dispatch_spatial` to the same API (optional fields like `max_obs`, `ref_label_key`, and benchmark paths are forwarded when present).
 
 ## Security notes
 

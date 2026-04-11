@@ -92,7 +92,20 @@ Deno.serve(async (req) => {
       }
 
       case "launch_experiment": {
-        const { name, model, hyperparameters, pipeline_run_id } = payload;
+        const { name, model, hyperparameters, pipeline_run_id, dataset_ids } = payload as {
+          name: string;
+          model: string;
+          hyperparameters?: Record<string, unknown>;
+          pipeline_run_id?: string | null;
+          dataset_ids?: string[];
+        };
+
+        const mergedHyperparameters: Record<string, unknown> = {
+          ...(hyperparameters && typeof hyperparameters === "object" ? hyperparameters : {}),
+        };
+        if (Array.isArray(dataset_ids) && dataset_ids.length > 0) {
+          mergedHyperparameters.dataset_ids = dataset_ids;
+        }
 
         const { data: experiment, error } = await supabase
           .from("experiments")
@@ -100,7 +113,7 @@ Deno.serve(async (req) => {
             user_id: user.id,
             name,
             model,
-            hyperparameters,
+            hyperparameters: mergedHyperparameters,
             pipeline_run_id,
             status: "running",
             started_at: new Date().toISOString(),
@@ -110,16 +123,40 @@ Deno.serve(async (req) => {
 
         if (error) throw error;
 
-        await supabase.from("jobs").insert({
-          user_id: user.id,
-          type: "experiment",
-          status: "running",
-          experiment_id: experiment.id,
-          pipeline_run_id: pipeline_run_id ?? null,
-          started_at: new Date().toISOString(),
-          worker_version: "edge-orchestrator-v1",
-          logs: [{ ts: new Date().toISOString(), line: `Experiment ${name} started for model ${model}` }],
-        });
+        const { data: job, error: jobError } = await supabase
+          .from("jobs")
+          .insert({
+            user_id: user.id,
+            type: "experiment",
+            status: "running",
+            experiment_id: experiment.id,
+            pipeline_run_id: pipeline_run_id ?? null,
+            started_at: new Date().toISOString(),
+            worker_version: "edge-orchestrator-v1",
+            logs: [{ ts: new Date().toISOString(), line: `Experiment ${name} started for model ${model}` }],
+          })
+          .select("id")
+          .single();
+
+        if (jobError) throw jobError;
+
+        const mlTrainUrl = Deno.env.get("ML_TRAINING_WEBHOOK_URL")?.trim();
+        const mlTrainSecret = Deno.env.get("ML_TRAINING_WEBHOOK_SECRET")?.trim();
+        if (mlTrainUrl && mlTrainSecret && job?.id) {
+          fetch(mlTrainUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Training-Webhook-Secret": mlTrainSecret,
+            },
+            body: JSON.stringify({
+              experiment_id: experiment.id,
+              job_id: job.id,
+            }),
+          }).catch(() => {
+            /* worker may be offline; experiment stays running until finalized or retried */
+          });
+        }
 
         return new Response(JSON.stringify({ success: true, experiment }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -202,10 +239,38 @@ Deno.serve(async (req) => {
       }
 
       case "dispatch_spatial": {
-        const { sprint, h5ad_path, reference_h5ad } = payload as {
+        const {
+          sprint,
+          h5ad_path,
+          reference_h5ad,
+          ref_label_key,
+          max_obs,
+          random_seed,
+          spatial_max_obs,
+          spatial_random_seed,
+          min_shared_genes,
+          train_h5ad_path,
+          test_h5ad_path,
+          platform_train,
+          platform_test,
+          in_domain_f1,
+          ood_f1,
+        } = payload as {
           sprint?: string;
           h5ad_path?: string | null;
           reference_h5ad?: string | null;
+          ref_label_key?: string | null;
+          max_obs?: number | null;
+          random_seed?: number | null;
+          spatial_max_obs?: number | null;
+          spatial_random_seed?: number | null;
+          min_shared_genes?: number | null;
+          train_h5ad_path?: string | null;
+          test_h5ad_path?: string | null;
+          platform_train?: string | null;
+          platform_test?: string | null;
+          in_domain_f1?: number | null;
+          ood_f1?: number | null;
         };
         const sprintKey = sprint ?? "sprint1";
         const now = new Date().toISOString();
@@ -241,11 +306,25 @@ Deno.serve(async (req) => {
               ? JSON.stringify({
                   spatial_h5ad: h5ad_path ?? null,
                   reference_h5ad: reference_h5ad ?? null,
-                  ref_label_key: "cell_type",
+                  ref_label_key: ref_label_key ?? "cell_type",
+                  spatial_max_obs: spatial_max_obs ?? null,
+                  spatial_random_seed: spatial_random_seed ?? 0,
+                  min_shared_genes: min_shared_genes ?? 500,
                 })
               : sprintKey === "sprint4"
-                ? JSON.stringify({})
-                : JSON.stringify({ h5ad_path: h5ad_path ?? null });
+                ? JSON.stringify({
+                    platform_train: platform_train ?? "10x_visium",
+                    platform_test: platform_test ?? "stereo_seq",
+                    in_domain_f1: in_domain_f1 ?? 0.82,
+                    ood_f1: ood_f1 ?? 0.61,
+                    train_h5ad_path: train_h5ad_path ?? null,
+                    test_h5ad_path: test_h5ad_path ?? null,
+                  })
+                : JSON.stringify({
+                    h5ad_path: h5ad_path ?? null,
+                    max_obs: max_obs ?? null,
+                    random_seed: random_seed ?? 0,
+                  });
           try {
             await fetch(`${mlBase}${path}`, {
               method: "POST",

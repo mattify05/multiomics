@@ -16,6 +16,16 @@ cohorts:
     notes: Human or mouse brain Visium for domain structure and subgroup metrics.
     suggested_use: Sprint 1–2; subgroup by structure/region if annotated
 
+  - id: tenx_visium_hd
+    platform: 10x_visium_hd
+    source: 10x_genomics
+    role: train_val
+    notes: >
+      Visium HD binned_outputs/square_*um with filtered_feature_bc_matrix + spatial/tissue_positions.parquet.
+      Convert with ml/data_pack/visium_hd_square_to_h5ad.py; obs should include sample_id, slide_id, platform.
+      Prefer coarser bins (e.g. square_016um) or API max_obs for interactive runs; full 008um slides are multi‑GB.
+    suggested_use: Sprint 1–3; use subsampling or coarser binning for graph-heavy steps (see ml/spatial/PERFORMANCE.md)
+
   - id: stereo_seq_mouse_brain
     platform: stereo_seq
     source: cns_lifetech

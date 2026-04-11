@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from ml.spatial.h5ad_load import subsample_obs
+
 
 def _synthetic_artifacts(n_spots: int = 400, n_genes: int = 200) -> Dict[str, Any]:
     rng = np.random.default_rng(42)
@@ -60,7 +62,12 @@ def _synthetic_artifacts(n_spots: int = 400, n_genes: int = 200) -> Dict[str, An
     }
 
 
-def run_from_h5ad(path: Path, label_key: Optional[str] = None) -> Dict[str, Any]:
+def run_from_h5ad(
+    path: Path,
+    label_key: Optional[str] = None,
+    max_obs: Optional[int] = None,
+    random_seed: int = 0,
+) -> Dict[str, Any]:
     try:
         import anndata as ad
         import scanpy as sc
@@ -69,6 +76,8 @@ def run_from_h5ad(path: Path, label_key: Optional[str] = None) -> Dict[str, Any]
 
     try:
         adata = ad.read_h5ad(path)
+        n_loaded = int(adata.n_obs)
+        adata = subsample_obs(adata, max_obs, random_seed)
         sc.pp.filter_cells(adata, min_genes=50)
         sc.pp.filter_genes(adata, min_cells=3)
         if adata.n_obs < 10 or adata.n_vars < 10:
@@ -119,12 +128,17 @@ def run_from_h5ad(path: Path, label_key: Optional[str] = None) -> Dict[str, Any]
                     }
                 )
 
-        qc_metrics = {
+        qc_metrics: Dict[str, Any] = {
+            "n_spots_loaded": n_loaded,
             "n_spots_kept": int(adata.n_obs),
             "n_genes_kept": int(adata.n_vars),
             "n_pcs_used": int(n_pcs),
             "leiden_resolution": 0.5,
         }
+        if max_obs is not None and n_loaded > max_obs:
+            qc_metrics["n_spots_after_subsample"] = int(adata.n_obs)
+            qc_metrics["subsample_max_obs"] = int(max_obs)
+            qc_metrics["subsample_random_seed"] = int(random_seed)
 
         top_markers: List[Dict[str, Any]] = []
         try:
@@ -155,7 +169,11 @@ def run_from_h5ad(path: Path, label_key: Optional[str] = None) -> Dict[str, Any]
         return _synthetic_artifacts()
 
 
-def run(h5ad_path: Optional[str] = None) -> Dict[str, Any]:
+def run(
+    h5ad_path: Optional[str] = None,
+    max_obs: Optional[int] = None,
+    random_seed: int = 0,
+) -> Dict[str, Any]:
     if h5ad_path and Path(h5ad_path).is_file():
-        return run_from_h5ad(Path(h5ad_path))
+        return run_from_h5ad(Path(h5ad_path), max_obs=max_obs, random_seed=random_seed)
     return _synthetic_artifacts()

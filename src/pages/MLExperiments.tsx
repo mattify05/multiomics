@@ -30,7 +30,7 @@ const typeColors: Record<string, string> = {
   Auto: "bg-primary/15 text-primary border-primary/30",
 };
 
-type PipelineRun = { id: string; name: string; status: string; dataset_ids: string[] | null };
+type PipelineRun = { id: string; name: string; status: string; dataset_ids: string[] | null | undefined };
 type ExperimentRow = {
   id: string;
   name: string;
@@ -70,6 +70,8 @@ const hyperparametersSchema = z.object({
   test_n: z.number().int().nonnegative().optional(),
   label_column: z.string().min(1),
 });
+
+const tabularTrainingUi = import.meta.env.VITE_TABULAR_TRAINING_ENABLED === "true";
 
 export default function MLExperiments() {
   const { user } = useAuth();
@@ -191,12 +193,15 @@ export default function MLExperiments() {
     }
     setLaunching(true);
     try {
+      const pip = pipelines.find((p) => p.id === selectedPipelineId);
+      const datasetIds = (pip?.dataset_ids ?? []).filter((id): id is string => Boolean(id));
       await invokePipelineOrchestrator(supabase, {
         action: "launch_experiment",
         name,
         model: selectedModel,
         hyperparameters,
         pipeline_run_id: selectedPipelineId || null,
+        dataset_ids: datasetIds.length > 0 ? datasetIds : undefined,
       });
       toast({ title: "Experiment started", description: name });
       setExperimentName("");
@@ -217,7 +222,12 @@ export default function MLExperiments() {
     setFinalizingId(exp.id);
     try {
       await finalizeExperimentWithDemoArtifacts(supabase, { experimentId: exp.id, userId: user.id });
-      toast({ title: "Artifacts saved", description: "Evaluation + XAI results stored. Open Results / XAI Reports." });
+      toast({
+        title: "Artifacts saved",
+        description: tabularTrainingUi
+          ? "Synthetic metrics only (dev). Prefer the tabular worker for real training from Storage."
+          : "Evaluation + XAI results stored. Open Results / XAI Reports.",
+      });
       await queryClient.invalidateQueries({ queryKey: ["experiments"] });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Finalize failed";
@@ -345,6 +355,12 @@ export default function MLExperiments() {
                 />
               </div>
             </div>
+            {tabularTrainingUi ? (
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Tabular worker mode: ensure Edge <code className="text-[9px]">ML_TRAINING_WEBHOOK_URL</code> points at{" "}
+                <code className="text-[9px]">/internal/tabular/train</code>. Use &quot;Finalize demo&quot; only for offline UI tests.
+              </p>
+            ) : null}
             <button
               type="button"
               onClick={handleLaunch}
@@ -419,6 +435,11 @@ export default function MLExperiments() {
                             {run.status === "running" && (
                               <button
                                 type="button"
+                                title={
+                                  tabularTrainingUi
+                                    ? "Synthetic metrics only — use when the Python tabular worker is not running"
+                                    : undefined
+                                }
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleFinalizeDemo(run);
@@ -426,7 +447,7 @@ export default function MLExperiments() {
                                 disabled={finalizingId === run.id}
                                 className="text-[10px] rounded border border-border px-2 py-1 hover:bg-secondary"
                               >
-                                {finalizingId === run.id ? "…" : "Finalize demo"}
+                                {finalizingId === run.id ? "…" : tabularTrainingUi ? "Finalize demo (synthetic)" : "Finalize demo"}
                               </button>
                             )}
                             <button

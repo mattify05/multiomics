@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from ml.spatial.h5ad_load import subsample_obs
+
 
 def _synthetic() -> Dict[str, Any]:
     rng = np.random.default_rng(7)
@@ -37,7 +39,11 @@ def _synthetic() -> Dict[str, Any]:
     }
 
 
-def run(h5ad_path: Optional[str] = None) -> Dict[str, Any]:
+def run(
+    h5ad_path: Optional[str] = None,
+    max_obs: Optional[int] = None,
+    random_seed: int = 0,
+) -> Dict[str, Any]:
     if not h5ad_path or not Path(h5ad_path).is_file():
         return _synthetic()
     try:
@@ -49,6 +55,8 @@ def run(h5ad_path: Optional[str] = None) -> Dict[str, Any]:
 
     try:
         adata = ad.read_h5ad(h5ad_path)
+        n_loaded = int(adata.n_obs)
+        adata = subsample_obs(adata, max_obs, random_seed)
         sk = "spatial" if "spatial" in adata.obsm else ("X_spatial" if "X_spatial" in adata.obsm else None)
         if sk is None:
             return _synthetic()
@@ -71,10 +79,19 @@ def run(h5ad_path: Optional[str] = None) -> Dict[str, Any]:
         for cl in sorted(set(niche_ids), key=lambda x: str(x))[:8]:
             niche_markers[str(cl)] = [f"GENE_{cl}_{k}" for k in range(3)]
 
+        graph_metrics: Dict[str, Any] = {
+            "n_niches": len(set(niche_ids)),
+            "method": "squidpy_spatial_graph_leiden",
+            "n_spots_loaded": n_loaded,
+        }
+        if max_obs is not None and n_loaded > max_obs:
+            graph_metrics["n_spots_after_subsample"] = int(adata.n_obs)
+            graph_metrics["subsample_random_seed"] = int(random_seed)
+
         return {
             "niches": niches,
             "niche_markers": niche_markers,
-            "graph_metrics": {"n_niches": len(set(niche_ids)), "method": "squidpy_spatial_graph_leiden"},
+            "graph_metrics": graph_metrics,
         }
     except Exception:
         return _synthetic()
