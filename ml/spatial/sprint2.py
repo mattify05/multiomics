@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from ml.spatial.h5ad_load import subsample_obs
+from ml.spatial.leiden_utils import leiden_kwds
 
 
 def _synthetic() -> Dict[str, Any]:
@@ -43,6 +44,7 @@ def run(
     h5ad_path: Optional[str] = None,
     max_obs: Optional[int] = None,
     random_seed: int = 0,
+    fast: bool = False,
 ) -> Dict[str, Any]:
     if not h5ad_path or not Path(h5ad_path).is_file():
         return _synthetic()
@@ -65,11 +67,18 @@ def run(
 
         sc.pp.normalize_total(adata, target_sum=1e4)
         sc.pp.log1p(adata)
-        sq.gr.spatial_neighbors(adata, coord_type="generic", spatial_key="spatial")
+        n_neighs = 4 if fast else 6
+        sq.gr.spatial_neighbors(adata, coord_type="generic", spatial_key="spatial", n_neighs=n_neighs)
         adj_key = "spatial_connectivities"
         if adj_key not in adata.obsp:
             return _synthetic()
-        sc.tl.leiden(adata, resolution=0.8, adjacency=adata.obsp[adj_key], key_added="niche")
+        sc.tl.leiden(
+            adata,
+            resolution=0.8,
+            adjacency=adata.obsp[adj_key],
+            key_added="niche",
+            **leiden_kwds(),
+        )
 
         spot_ids = list(adata.obs_names.astype(str))
         niche_ids = adata.obs["niche"].astype(str).tolist()
@@ -83,6 +92,8 @@ def run(
             "n_niches": len(set(niche_ids)),
             "method": "squidpy_spatial_graph_leiden",
             "n_spots_loaded": n_loaded,
+            "profile": "fast" if fast else "default",
+            "spatial_neighbors_k": n_neighs,
         }
         if max_obs is not None and n_loaded > max_obs:
             graph_metrics["n_spots_after_subsample"] = int(adata.n_obs)

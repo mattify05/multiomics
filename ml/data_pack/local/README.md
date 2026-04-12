@@ -19,6 +19,6 @@ Only **`*.h5ad`** files here are gitignored. Use this folder for **worker-readab
    ./ml/data_pack/build_dev_h5ad.sh "/path/to/binned_outputs/square_016um" 50000 0
    ```
 
-3. **Point the API** at the absolute path of the file under this directory, with `max_obs` for interactive runs (see `ml/spatial/PERFORMANCE.md`).
+3. **Point the API** at the absolute path of the file under this directory, with `max_obs` and optional `"profile": "fast"` for interactive runs (see `ml/spatial/PERFORMANCE.md`). CLI: `python ml/spatial/validate_sprint_stack.py --h5ad-path ... --max-obs 10000 --fast`.
 
 Naming suggestion: `{square_name}_dev.h5ad` or `{cohort}_{slide}_016um.h5ad`.

@@ -21,6 +21,8 @@ export type H5adRunOptions = {
   /** Subsample spots after load (uniform random); caps memory/time on Visium HD. */
   max_obs?: number;
   random_seed?: number;
+  /** "fast" = smaller HVG/PCs/neighbors for quicker runs (API default is "default"). */
+  profile?: "default" | "fast";
 };
 
 async function postJson(path: string, body: Record<string, unknown>): Promise<SpatialRunResponse> {
@@ -50,6 +52,7 @@ export async function runSpatialQcAnnotation(
     h5ad_path: h5adPath ?? null,
     max_obs: opts?.max_obs ?? null,
     random_seed: opts?.random_seed ?? 0,
+    profile: opts?.profile ?? "default",
   });
 }
 
@@ -58,6 +61,7 @@ export async function runSpatialNiches(h5adPath?: string, opts?: H5adRunOptions)
     h5ad_path: h5adPath ?? null,
     max_obs: opts?.max_obs ?? null,
     random_seed: opts?.random_seed ?? 0,
+    profile: opts?.profile ?? "default",
   });
 }
 

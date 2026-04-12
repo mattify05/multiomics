@@ -34,7 +34,7 @@ Per dataset, keep: matrix, spatial coordinates (`spatial/tissue_positions_list.c
 
 1. **Synthetic** (always available): `python ml/data_pack/make_synthetic_spatial_h5ad.py` → `ml/data_pack/local/synthetic_spatial_dev.h5ad`
 2. **Real Visium HD (recommended dev settings):** coarser bin (`square_016um`) + `./ml/data_pack/build_dev_h5ad.sh "/path/to/square_016um" 50000 0`
-3. **Validate Sprints 1–2:** `python ml/spatial/validate_sprint_stack.py --h5ad-path … --max-obs …` (see `ml/spatial/PERFORMANCE.md`)
+3. **Validate Sprints 1–2:** `python ml/spatial/validate_sprint_stack.py --h5ad-path … --max-obs … [--fast]` (see `ml/spatial/PERFORMANCE.md`; **`--fast`** matches API `profile: "fast"`)
 4. **Define training scope:** edit `ml/spatial/MODELING_TARGET.md` (task, labels, splits)
 
 **Visium HD example** (`PYTHONPATH` = repo root, venv activated):

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from ml.spatial.h5ad_load import subsample_obs
+from ml.spatial.leiden_utils import leiden_kwds
 
 
 def _synthetic_artifacts(n_spots: int = 400, n_genes: int = 200) -> Dict[str, Any]:
@@ -67,6 +68,7 @@ def run_from_h5ad(
     label_key: Optional[str] = None,
     max_obs: Optional[int] = None,
     random_seed: int = 0,
+    fast: bool = False,
 ) -> Dict[str, Any]:
     try:
         import anndata as ad
@@ -84,13 +86,16 @@ def run_from_h5ad(
             return _synthetic_artifacts()
         sc.pp.normalize_total(adata, target_sum=1e4)
         sc.pp.log1p(adata)
-        sc.pp.highly_variable_genes(adata, n_top_genes=min(2000, adata.n_vars), subset=True)
+        hvg_cap = min(1000 if fast else 2000, adata.n_vars)
+        sc.pp.highly_variable_genes(adata, n_top_genes=hvg_cap, subset=True)
         sc.pp.scale(adata, max_value=10)
-        n_pcs = min(30, adata.n_obs - 1, adata.n_vars)
+        pc_cap = 20 if fast else 30
+        neigh_cap = 10 if fast else 15
+        n_pcs = min(pc_cap, adata.n_obs - 1, adata.n_vars)
         sc.tl.pca(adata, svd_solver="arpack", n_comps=max(2, n_pcs))
-        sc.pp.neighbors(adata, n_neighbors=min(15, adata.n_obs - 1), n_pcs=max(2, n_pcs))
+        sc.pp.neighbors(adata, n_neighbors=min(neigh_cap, adata.n_obs - 1), n_pcs=max(2, n_pcs))
         sc.tl.umap(adata)
-        sc.tl.leiden(adata, resolution=0.5, key_added="leiden")
+        sc.tl.leiden(adata, resolution=0.5, key_added="leiden", **leiden_kwds())
 
         n = adata.n_obs
         spot_ids = list(adata.obs_names.astype(str))
@@ -134,6 +139,7 @@ def run_from_h5ad(
             "n_genes_kept": int(adata.n_vars),
             "n_pcs_used": int(n_pcs),
             "leiden_resolution": 0.5,
+            "profile": "fast" if fast else "default",
         }
         if max_obs is not None and n_loaded > max_obs:
             qc_metrics["n_spots_after_subsample"] = int(adata.n_obs)
@@ -173,7 +179,8 @@ def run(
     h5ad_path: Optional[str] = None,
     max_obs: Optional[int] = None,
     random_seed: int = 0,
+    fast: bool = False,
 ) -> Dict[str, Any]:
     if h5ad_path and Path(h5ad_path).is_file():
-        return run_from_h5ad(Path(h5ad_path), max_obs=max_obs, random_seed=random_seed)
+        return run_from_h5ad(Path(h5ad_path), max_obs=max_obs, random_seed=random_seed, fast=fast)
     return _synthetic_artifacts()

@@ -18,7 +18,7 @@ Run locally:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +46,10 @@ class H5adBody(BaseModel):
         description="Subsample spots after load (uniform random); use for large Visium HD objects",
     )
     random_seed: int = Field(0, description="RNG seed for max_obs subsampling")
+    profile: Literal["default", "fast"] = Field(
+        "default",
+        description='"fast" = smaller HVG/PCs/neighbors for quicker dev runs (same API contract)',
+    )
 
 
 class LabelTransferBody(BaseModel):
@@ -133,6 +137,7 @@ def run_qc_annotation(body: H5adBody) -> Dict[str, Any]:
         h5ad_path=body.h5ad_path,
         max_obs=body.max_obs,
         random_seed=body.random_seed,
+        fast=body.profile == "fast",
     )
 
 
@@ -144,6 +149,7 @@ def run_niches(body: H5adBody) -> Dict[str, Any]:
         h5ad_path=body.h5ad_path,
         max_obs=body.max_obs,
         random_seed=body.random_seed,
+        fast=body.profile == "fast",
     )
 
 

@@ -42,11 +42,12 @@ Open **Spatial Studio** in the app sidebar (`/spatial`).
 {
   "h5ad_path": "/absolute/path/on/worker/file.h5ad",
   "max_obs": 50000,
-  "random_seed": 0
+  "random_seed": 0,
+  "profile": "default"
 }
 ```
 
-Omit `h5ad_path` or point at a missing file for **synthetic demo** output. Use `max_obs` for large Visium HD slides (full load still occurs; see [`ml/spatial/PERFORMANCE.md`](spatial/PERFORMANCE.md)).
+Use `"profile": "fast"` for smaller HVG/PC/neighbor settings on the same endpoints. Omit `h5ad_path` or point at a missing file for **synthetic demo** output. Use `max_obs` for large Visium HD slides (full load still occurs; see [`ml/spatial/PERFORMANCE.md`](spatial/PERFORMANCE.md)).
 
 **Sprint 3** — `POST /run/spatial/label-transfer`
 

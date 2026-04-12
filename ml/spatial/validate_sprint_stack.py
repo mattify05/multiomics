@@ -12,7 +12,7 @@ For a real Visium HD file (path must be readable on this machine):
 
   python ml/spatial/validate_sprint_stack.py \\
     --h5ad-path ml/data_pack/local/square_016um_dev.h5ad \\
-    --max-obs 25000 --random-seed 0
+    --max-obs 10000 --fast --random-seed 0
 
 Optional API mode (uvicorn must be running):
 
@@ -70,12 +70,12 @@ def _post_json(url: str, body: Dict[str, Any], timeout: float = 3600.0) -> Dict[
         return json.loads(resp.read().decode("utf-8"))
 
 
-def run_direct(h5ad_path: Path, max_obs: Optional[int], random_seed: int) -> Dict[str, Any]:
+def run_direct(h5ad_path: Path, max_obs: Optional[int], random_seed: int, fast: bool) -> Dict[str, Any]:
     rss0 = _rss_bytes()
     t0 = time.perf_counter()
-    art1 = sprint1.run(str(h5ad_path), max_obs=max_obs, random_seed=random_seed)
+    art1 = sprint1.run(str(h5ad_path), max_obs=max_obs, random_seed=random_seed, fast=fast)
     t1 = time.perf_counter()
-    art2 = sprint2.run(str(h5ad_path), max_obs=max_obs, random_seed=random_seed)
+    art2 = sprint2.run(str(h5ad_path), max_obs=max_obs, random_seed=random_seed, fast=fast)
     t2 = time.perf_counter()
     rss1 = _rss_bytes()
     report = {
@@ -94,14 +94,20 @@ def run_direct(h5ad_path: Path, max_obs: Optional[int], random_seed: int) -> Dic
         "sprint2_graph_metrics": art2.get("graph_metrics"),
         "sprint1_used_synthetic_fallback": _sprint1_is_synthetic(art1),
         "sprint2_used_synthetic_fallback": _sprint2_is_synthetic(art2),
+        "profile": "fast" if fast else "default",
     }
     return report
 
 
-def run_api(base: str, h5ad_path: Path, max_obs: Optional[int], random_seed: int) -> Dict[str, Any]:
+def run_api(base: str, h5ad_path: Path, max_obs: Optional[int], random_seed: int, fast: bool) -> Dict[str, Any]:
     base = base.rstrip("/")
     abs_path = str(h5ad_path.resolve())
-    body = {"h5ad_path": abs_path, "max_obs": max_obs, "random_seed": random_seed}
+    body = {
+        "h5ad_path": abs_path,
+        "max_obs": max_obs,
+        "random_seed": random_seed,
+        "profile": "fast" if fast else "default",
+    }
     rss0 = _rss_bytes()
     t0 = time.perf_counter()
     r1 = _post_json(f"{base}/run/spatial/qc-annotation", body)
@@ -133,6 +139,7 @@ def run_api(base: str, h5ad_path: Path, max_obs: Optional[int], random_seed: int
     a2 = r2.get("artifacts") or {}
     out["sprint1_used_synthetic_fallback"] = _sprint1_is_synthetic(a1)
     out["sprint2_used_synthetic_fallback"] = _sprint2_is_synthetic(a2)
+    out["profile"] = "fast" if fast else "default"
     return out
 
 
@@ -152,6 +159,11 @@ def main() -> None:
         default=None,
         help="If set, POST to FastAPI instead of calling sprints in-process",
     )
+    ap.add_argument(
+        "--fast",
+        action="store_true",
+        help="Use fast profile (smaller HVG/PCs/neighbors; matches API profile=fast)",
+    )
     args = ap.parse_args()
 
     h5ad_path = Path(args.h5ad_path).expanduser()
@@ -167,9 +179,9 @@ def main() -> None:
     max_obs: Optional[int] = args.max_obs if args.max_obs and args.max_obs > 0 else None
 
     if args.api_url:
-        report = run_api(args.api_url, h5ad_path, max_obs, args.random_seed)
+        report = run_api(args.api_url, h5ad_path, max_obs, args.random_seed, fast=args.fast)
     else:
-        report = run_direct(h5ad_path, max_obs, args.random_seed)
+        report = run_direct(h5ad_path, max_obs, args.random_seed, fast=args.fast)
 
     print(json.dumps(report, indent=2))
 

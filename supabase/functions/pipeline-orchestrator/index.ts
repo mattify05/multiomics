@@ -246,6 +246,7 @@ Deno.serve(async (req) => {
           ref_label_key,
           max_obs,
           random_seed,
+          profile,
           spatial_max_obs,
           spatial_random_seed,
           min_shared_genes,
@@ -262,6 +263,7 @@ Deno.serve(async (req) => {
           ref_label_key?: string | null;
           max_obs?: number | null;
           random_seed?: number | null;
+          profile?: string | null;
           spatial_max_obs?: number | null;
           spatial_random_seed?: number | null;
           min_shared_genes?: number | null;
@@ -324,6 +326,7 @@ Deno.serve(async (req) => {
                     h5ad_path: h5ad_path ?? null,
                     max_obs: max_obs ?? null,
                     random_seed: random_seed ?? 0,
+                    profile: profile === "fast" ? "fast" : "default",
                   });
           try {
             await fetch(`${mlBase}${path}`, {
