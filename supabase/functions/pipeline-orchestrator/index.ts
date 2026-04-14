@@ -275,6 +275,7 @@ Deno.serve(async (req) => {
           ood_f1?: number | null;
         };
         const sprintKey = sprint ?? "sprint1";
+        const requestId = crypto.randomUUID();
         const now = new Date().toISOString();
         const { data: job, error } = await supabase
           .from("jobs")
@@ -282,10 +283,11 @@ Deno.serve(async (req) => {
             user_id: user.id,
             type: `spatial_${sprintKey}`,
             status: "queued",
-            worker_version: "spatial-edge-dispatch-v1",
+            worker_version: "spatial-edge-dispatch-v2",
             logs: [
               {
                 ts: now,
+                request_id: requestId,
                 line: `dispatch_spatial ${sprintKey} h5ad=${h5ad_path ?? "none"} ref=${reference_h5ad ?? "none"}`,
               },
             ],
@@ -331,7 +333,10 @@ Deno.serve(async (req) => {
           try {
             await fetch(`${mlBase}${path}`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "x-request-id": requestId,
+              },
               body,
             });
           } catch (_e) {
@@ -339,7 +344,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        return new Response(JSON.stringify({ success: true, job_id: job.id }), {
+        return new Response(JSON.stringify({ success: true, job_id: job.id, request_id: requestId }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }

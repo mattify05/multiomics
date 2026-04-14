@@ -14,7 +14,18 @@ export type SpatialRunResponse = {
   created_at: string;
   updated_at: string;
   error: string | null;
+  error_code?: string | null;
+  request_id?: string;
+  elapsed_ms?: number;
   artifacts: Record<string, unknown>;
+};
+
+export type SpatialErrorResponse = {
+  error_code: string;
+  message: string;
+  run_id?: string;
+  request_id?: string;
+  retryable: boolean;
 };
 
 export type H5adRunOptions = {
@@ -28,13 +39,31 @@ export type H5adRunOptions = {
 async function postJson(path: string, body: Record<string, unknown>): Promise<SpatialRunResponse> {
   const root = base();
   if (!root) throw new Error("VITE_SPATIAL_API_URL is not set");
+  const requestId = crypto.randomUUID();
   const res = await fetch(`${root}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-request-id": requestId,
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const t = await res.text();
+    let parsed: SpatialErrorResponse | undefined;
+    try {
+      parsed = JSON.parse(t) as SpatialErrorResponse;
+    } catch {
+      /* not JSON */
+    }
+    if (parsed?.error_code) {
+      const err = new Error(parsed.message || res.statusText);
+      (err as unknown as Record<string, unknown>).errorCode = parsed.error_code;
+      (err as unknown as Record<string, unknown>).retryable = parsed.retryable;
+      (err as unknown as Record<string, unknown>).runId = parsed.run_id;
+      (err as unknown as Record<string, unknown>).requestId = parsed.request_id;
+      throw err;
+    }
     throw new Error(t || res.statusText);
   }
   return res.json() as Promise<SpatialRunResponse>;
