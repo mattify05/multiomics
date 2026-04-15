@@ -14,19 +14,56 @@ export type SpatialRunResponse = {
   created_at: string;
   updated_at: string;
   error: string | null;
+  error_code?: string | null;
+  request_id?: string;
+  elapsed_ms?: number;
   artifacts: Record<string, unknown>;
+};
+
+export type SpatialErrorResponse = {
+  error_code: string;
+  message: string;
+  run_id?: string;
+  request_id?: string;
+  retryable: boolean;
+};
+
+export type H5adRunOptions = {
+  /** Subsample spots after load (uniform random); caps memory/time on Visium HD. */
+  max_obs?: number;
+  random_seed?: number;
+  /** "fast" = smaller HVG/PCs/neighbors for quicker runs (API default is "default"). */
+  profile?: "default" | "fast";
 };
 
 async function postJson(path: string, body: Record<string, unknown>): Promise<SpatialRunResponse> {
   const root = base();
   if (!root) throw new Error("VITE_SPATIAL_API_URL is not set");
+  const requestId = crypto.randomUUID();
   const res = await fetch(`${root}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-request-id": requestId,
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const t = await res.text();
+    let parsed: SpatialErrorResponse | undefined;
+    try {
+      parsed = JSON.parse(t) as SpatialErrorResponse;
+    } catch {
+      /* not JSON */
+    }
+    if (parsed?.error_code) {
+      const err = new Error(parsed.message || res.statusText);
+      (err as unknown as Record<string, unknown>).errorCode = parsed.error_code;
+      (err as unknown as Record<string, unknown>).retryable = parsed.retryable;
+      (err as unknown as Record<string, unknown>).runId = parsed.run_id;
+      (err as unknown as Record<string, unknown>).requestId = parsed.request_id;
+      throw err;
+    }
     throw new Error(t || res.statusText);
   }
   return res.json() as Promise<SpatialRunResponse>;
@@ -36,28 +73,67 @@ export function isSpatialApiConfigured(): boolean {
   return Boolean(base());
 }
 
-export async function runSpatialQcAnnotation(h5adPath?: string): Promise<SpatialRunResponse> {
-  return postJson("/run/spatial/qc-annotation", { h5ad_path: h5adPath ?? null });
+export async function runSpatialQcAnnotation(
+  h5adPath?: string,
+  opts?: H5adRunOptions
+): Promise<SpatialRunResponse> {
+  return postJson("/run/spatial/qc-annotation", {
+    h5ad_path: h5adPath ?? null,
+    max_obs: opts?.max_obs ?? null,
+    random_seed: opts?.random_seed ?? 0,
+    profile: opts?.profile ?? "default",
+  });
 }
 
-export async function runSpatialNiches(h5adPath?: string): Promise<SpatialRunResponse> {
-  return postJson("/run/spatial/niches", { h5ad_path: h5adPath ?? null });
+export async function runSpatialNiches(h5adPath?: string, opts?: H5adRunOptions): Promise<SpatialRunResponse> {
+  return postJson("/run/spatial/niches", {
+    h5ad_path: h5adPath ?? null,
+    max_obs: opts?.max_obs ?? null,
+    random_seed: opts?.random_seed ?? 0,
+    profile: opts?.profile ?? "default",
+  });
 }
+
+export type LabelTransferOptions = {
+  spatial_max_obs?: number;
+  spatial_random_seed?: number;
+  min_shared_genes?: number;
+};
 
 export async function runSpatialLabelTransfer(
   spatialH5ad?: string,
   referenceH5ad?: string,
-  refLabelKey = "cell_type"
+  refLabelKey = "cell_type",
+  opts?: LabelTransferOptions
 ): Promise<SpatialRunResponse> {
   return postJson("/run/spatial/label-transfer", {
     spatial_h5ad: spatialH5ad ?? null,
     reference_h5ad: referenceH5ad ?? null,
     ref_label_key: refLabelKey,
+    spatial_max_obs: opts?.spatial_max_obs ?? null,
+    spatial_random_seed: opts?.spatial_random_seed ?? 0,
+    min_shared_genes: opts?.min_shared_genes ?? 500,
   });
 }
 
-export async function runSpatialBenchmark(): Promise<SpatialRunResponse> {
-  return postJson("/run/spatial/benchmark", {});
+export type BenchmarkOptions = {
+  platform_train?: string;
+  platform_test?: string;
+  in_domain_f1?: number;
+  ood_f1?: number;
+  train_h5ad_path?: string | null;
+  test_h5ad_path?: string | null;
+};
+
+export async function runSpatialBenchmark(opts?: BenchmarkOptions): Promise<SpatialRunResponse> {
+  return postJson("/run/spatial/benchmark", {
+    platform_train: opts?.platform_train ?? "10x_visium",
+    platform_test: opts?.platform_test ?? "stereo_seq",
+    in_domain_f1: opts?.in_domain_f1 ?? 0.82,
+    ood_f1: opts?.ood_f1 ?? 0.61,
+    train_h5ad_path: opts?.train_h5ad_path ?? null,
+    test_h5ad_path: opts?.test_h5ad_path ?? null,
+  });
 }
 
 export async function getSpatialStatus(runId: string): Promise<SpatialRunResponse> {

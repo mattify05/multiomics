@@ -1,0 +1,2 @@
+# Optional: XGBoost for catalogue models named XGBoost (falls back to logistic if missing)
+# xgboost>=2.0.0

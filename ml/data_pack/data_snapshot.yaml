@@ -1,0 +1,33 @@
+# Pinned data snapshot for reproducible training.
+# Verified by ml/data_pack/verify_snapshot.py before every training run.
+#
+# Workflow:
+#   1. Generate or convert your .h5ad files (see build_dev_h5ad.sh).
+#   2. Run:  python ml/data_pack/verify_snapshot.py --update
+#      This computes SHA-256 checksums and writes them back here.
+#   3. Commit this file. Future runs of verify_snapshot.py (without --update)
+#      will fail if any file changed.
+
+version: 1
+created_at: "2026-04-15"
+
+converter:
+  script: ml/data_pack/visium_hd_square_to_h5ad.py
+  flags: "--filter-in-tissue --no-histology --max-spots 10000 --random-seed 0"
+
+files:
+  - id: square_016um_dev
+    path: ml/data_pack/local/square_016um_dev.h5ad
+    sha256: null          # Set by verify_snapshot.py --update
+    n_obs: null           # Set by verify_snapshot.py --update
+    n_vars: null
+    max_obs_used: 10000
+    converter_version: "visium_hd_square_to_h5ad_v1"
+
+  - id: synthetic_spatial_dev
+    path: ml/data_pack/local/synthetic_spatial_dev.h5ad
+    sha256: null
+    n_obs: 600
+    n_vars: 500
+    max_obs_used: null
+    converter_version: "make_synthetic_spatial_h5ad_v1"

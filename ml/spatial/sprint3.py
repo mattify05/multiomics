@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
+
+from ml.spatial.config import allow_synthetic_fallback
+from ml.spatial.errors import (
+    DependencyError,
+    InsufficientSharedGenesError,
+    MissingFileError,
+    MissingLabelColumnError,
+    SyntheticFallbackDisabledError,
+)
+from ml.spatial.h5ad_load import subsample_obs
 
 
 def _synthetic() -> Dict[str, Any]:
@@ -35,30 +45,56 @@ def _synthetic() -> Dict[str, Any]:
     }
 
 
+def _require_fallback_or_raise(reason: str) -> Dict[str, Any]:
+    if allow_synthetic_fallback():
+        return _synthetic()
+    raise SyntheticFallbackDisabledError(
+        f"Synthetic fallback disabled (ML_ALLOW_SYNTHETIC_FALLBACK=false). Reason: {reason}"
+    )
+
+
 def run(
     spatial_h5ad: Optional[str] = None,
     reference_h5ad: Optional[str] = None,
     ref_label_key: str = "cell_type",
+    spatial_max_obs: Optional[int] = None,
+    spatial_random_seed: int = 0,
+    min_shared_genes: int = 500,
 ) -> Dict[str, Any]:
     if not spatial_h5ad or not Path(spatial_h5ad).is_file():
-        return _synthetic()
+        if spatial_h5ad and not Path(spatial_h5ad).is_file() and not allow_synthetic_fallback():
+            raise MissingFileError(f"spatial h5ad not found: {spatial_h5ad}")
+        return _require_fallback_or_raise("spatial_h5ad not provided or not found")
     if not reference_h5ad or not Path(reference_h5ad).is_file():
-        return _synthetic()
+        if reference_h5ad and not Path(reference_h5ad).is_file() and not allow_synthetic_fallback():
+            raise MissingFileError(f"reference h5ad not found: {reference_h5ad}")
+        return _require_fallback_or_raise("reference_h5ad not provided or not found")
+
     try:
         import anndata as ad
         import scanpy as sc
         from sklearn.neighbors import KNeighborsClassifier
-    except ImportError:
+    except ImportError as exc:
+        if not allow_synthetic_fallback():
+            raise DependencyError(f"Required package missing: {exc}") from exc
         return _synthetic()
 
     sp = ad.read_h5ad(spatial_h5ad)
+    n_spatial_loaded = int(sp.n_obs)
+    sp = subsample_obs(sp, spatial_max_obs, spatial_random_seed)
     ref = ad.read_h5ad(reference_h5ad)
     if ref_label_key not in ref.obs.columns:
-        return _synthetic()
+        avail = ", ".join(sorted(map(str, ref.obs.columns))) or "(none)"
+        raise MissingLabelColumnError(
+            f"reference AnnData missing obs column {ref_label_key!r}. Available: {avail}"
+        )
 
     common = list(set(sp.var_names) & set(ref.var_names))
-    if len(common) < 500:
-        return _synthetic()
+    if len(common) < min_shared_genes:
+        raise InsufficientSharedGenesError(
+            f"Only {len(common)} shared genes between spatial and reference; need >= {min_shared_genes}. "
+            "Check gene symbols / Ensembl IDs and harmonize var_names."
+        )
 
     sp_sub = sp[:, common].copy()
     ref_sub = ref[:, common].copy()
@@ -93,13 +129,20 @@ def run(
     uniq, counts = np.unique(pred, return_counts=True)
     coverage = {str(u): float(c) / len(pred) for u, c in zip(uniq, counts)}
 
+    integration_qc: Dict[str, Any] = {
+        "n_shared_genes": len(common),
+        "mean_confidence": float(np.mean(proba)),
+        "per_class_coverage": coverage,
+        "n_spatial_loaded": n_spatial_loaded,
+        "n_spatial_used": int(sp_sub.n_obs),
+    }
+    if spatial_max_obs is not None and n_spatial_loaded > spatial_max_obs:
+        integration_qc["spatial_subsample_max_obs"] = int(spatial_max_obs)
+        integration_qc["spatial_subsample_random_seed"] = int(spatial_random_seed)
+
     return {
         "label_transfer": label_transfer,
-        "integration_qc": {
-            "n_shared_genes": len(common),
-            "mean_confidence": float(np.mean(proba)),
-            "per_class_coverage": coverage,
-        },
+        "integration_qc": integration_qc,
         "celltype_composition": [
             {"region": "whole_slide", **{str(u): float(c) / len(pred) for u, c in zip(uniq, counts)}},
         ],

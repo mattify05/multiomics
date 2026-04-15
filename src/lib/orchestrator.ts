@@ -3,7 +3,15 @@ import type { Database } from "@/integrations/supabase/types";
 
 export type OrchestratorAction =
   | { action: "launch_pipeline"; name: string; description?: string | null; config: Record<string, unknown>; dataset_ids: string[] }
-  | { action: "launch_experiment"; name: string; model: string; hyperparameters?: Record<string, unknown>; pipeline_run_id?: string | null }
+  | {
+      action: "launch_experiment";
+      name: string;
+      model: string;
+      hyperparameters?: Record<string, unknown>;
+      pipeline_run_id?: string | null;
+      /** Resolved from the selected pipeline’s ``dataset_ids`` so the tabular worker can load Storage objects. */
+      dataset_ids?: string[];
+    }
   | { action: "update_experiment_status"; experiment_id: string; status: string; metrics?: Record<string, unknown>; runtime?: string | null }
   | { action: "append_job_log"; job_id: string; line: string }
   | { action: "update_job_status"; job_id: string; status: string }
