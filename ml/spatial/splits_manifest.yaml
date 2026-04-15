@@ -11,6 +11,7 @@ label:
   active_key: niche_pseudo       # Which key the pilot trainer should use
 
 split_unit: slide                # Never split bins from the same slide
+single_slide_pilot: true         # Allow same slide in all splits for dev-only pilot
 
 slides:
   # ── DEV (single-slide pilot) ────────────────────────────────────

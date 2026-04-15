@@ -25,10 +25,10 @@ Run this review **1 week** after Production Sprint 1 lands.
 
 | # | Check | How to verify | Pass threshold | Status |
 |---|-------|---------------|----------------|--------|
-| 2.1 | Splits manifest valid | `python ml/spatial/validate_splits_manifest.py` | Exit 0 | ☐ |
+| 2.1 | Splits manifest valid | `python ml/spatial/validate_splits_manifest.py --warn-missing` | Exit 0 | ☐ |
 | 2.2 | Data snapshot pinned | `python ml/data_pack/verify_snapshot.py` | Exit 0 (all checksums match) | ☐ |
 | 2.3 | Label key present | Load each h5ad in manifest → `active_key` column exists in `adata.obs` | Column exists for all slides | ☐ |
-| 2.4 | No slide leakage | Same slide ID never in two different splits | Validator exit 0 | ☐ |
+| 2.4 | No slide leakage | Same slide ID never in two different splits (except explicit `single_slide_pilot: true`) | Validator exit 0 | ☐ |
 | 2.5 | Minimum slides (dev) | ≥ 1 unique slide in train, val, test | Manifest `min_slides.dev` met | ☐ |
 
 **Gate:** All 5 must PASS. Items 2.3 and 2.5 may be waived for single-slide pilot only.

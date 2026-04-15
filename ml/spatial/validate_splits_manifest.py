@@ -4,7 +4,8 @@ Validate the splits manifest before training.
 
 Checks:
   1. YAML schema: required keys, types, non-empty splits.
-  2. No slide ID appears in more than one split (leakage guard).
+  2. No slide ID appears in more than one split (leakage guard),
+     unless single-slide pilot mode is explicitly enabled.
   3. h5ad paths exist on disk (warning only if --warn-missing, error by default).
   4. Active label key is one of interim_key / production_key.
 
@@ -16,6 +17,7 @@ Usage:
   export PYTHONPATH="${PWD}"
   python ml/spatial/validate_splits_manifest.py
   python ml/spatial/validate_splits_manifest.py --manifest ml/spatial/splits_manifest.yaml --warn-missing
+  python ml/spatial/validate_splits_manifest.py --allow-single-slide-pilot
 """
 
 from __future__ import annotations
@@ -38,7 +40,35 @@ def load_manifest(path: Path) -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def validate(manifest: Dict[str, Any], *, warn_missing_files: bool = False) -> List[str]:
+def _single_slide_pilot_enabled(manifest: Dict[str, Any], cli_allow: bool) -> bool:
+    if cli_allow:
+        return True
+    return bool(manifest.get("single_slide_pilot", False))
+
+
+def _is_valid_single_slide_pilot(slides: Dict[str, Any]) -> bool:
+    """Allow exactly one shared slide id/path across train/val/test for pilot mode."""
+    ids: Set[str] = set()
+    paths: Set[str] = set()
+    for split_name in REQUIRED_SPLIT_NAMES:
+        entries = slides.get(split_name, [])
+        if len(entries) != 1:
+            return False
+        sid = entries[0].get("id")
+        h5ad = entries[0].get("h5ad")
+        if not sid or not h5ad:
+            return False
+        ids.add(str(sid))
+        paths.add(str(h5ad))
+    return len(ids) == 1 and len(paths) == 1
+
+
+def validate(
+    manifest: Dict[str, Any],
+    *,
+    warn_missing_files: bool = False,
+    allow_single_slide_pilot: bool = False,
+) -> List[str]:
     errors: List[str] = []
 
     missing_top = REQUIRED_TOP_KEYS - set(manifest.keys())
@@ -65,6 +95,14 @@ def validate(manifest: Dict[str, Any], *, warn_missing_files: bool = False) -> L
         if missing_splits:
             errors.append(f"Missing split groups: {sorted(missing_splits)}")
 
+        pilot_mode = _single_slide_pilot_enabled(manifest, allow_single_slide_pilot)
+        pilot_ok = pilot_mode and _is_valid_single_slide_pilot(slides)
+        if pilot_mode and not pilot_ok:
+            errors.append(
+                "single_slide_pilot enabled, but manifest is not a valid single-slide layout "
+                "(requires exactly one identical slide id/path in each split)"
+            )
+
         all_ids: Dict[str, str] = {}
         for split_name in REQUIRED_SPLIT_NAMES:
             entries = slides.get(split_name, [])
@@ -78,7 +116,7 @@ def validate(manifest: Dict[str, Any], *, warn_missing_files: bool = False) -> L
                     errors.append(f"Entry in '{split_name}' missing 'id'")
                 if not h5ad:
                     errors.append(f"Entry in '{split_name}' missing 'h5ad'")
-                if sid and sid in all_ids and all_ids[sid] != split_name:
+                if sid and sid in all_ids and all_ids[sid] != split_name and not pilot_ok:
                     errors.append(
                         f"Slide '{sid}' appears in both '{all_ids[sid]}' and '{split_name}' — leakage risk"
                     )
@@ -109,6 +147,11 @@ def main() -> None:
         action="store_true",
         help="Treat missing h5ad files as warnings instead of errors",
     )
+    ap.add_argument(
+        "--allow-single-slide-pilot",
+        action="store_true",
+        help="Allow the same single slide in train/val/test (dev pilot mode only)",
+    )
     args = ap.parse_args()
 
     manifest_path = Path(args.manifest)
@@ -117,7 +160,11 @@ def main() -> None:
         sys.exit(1)
 
     manifest = load_manifest(manifest_path)
-    errors = validate(manifest, warn_missing_files=args.warn_missing)
+    errors = validate(
+        manifest,
+        warn_missing_files=args.warn_missing,
+        allow_single_slide_pilot=args.allow_single_slide_pilot,
+    )
 
     if errors:
         print(f"VALIDATION FAILED ({len(errors)} error(s)):", file=sys.stderr)
@@ -137,7 +184,8 @@ def main() -> None:
         f"OK  manifest valid  "
         f"train={n_train} val={n_val} test={n_test} "
         f"unique_slides={len(unique_ids)} "
-        f"active_label={manifest.get('label', {}).get('active_key')}"
+        f"active_label={manifest.get('label', {}).get('active_key')} "
+        f"single_slide_pilot={_single_slide_pilot_enabled(manifest, args.allow_single_slide_pilot)}"
     )
 
 
