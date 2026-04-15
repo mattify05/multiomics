@@ -1,0 +1,52 @@
+# Frozen label / split manifest for spatial Track A (niche/domain).
+# Validated by ml/spatial/validate_splits_manifest.py before training.
+# Update this file when adding new slides / changing splits.
+
+version: 1
+track: A_niche_domain
+
+label:
+  interim_key: niche_pseudo      # Sprint 2 Leiden output column
+  production_key: niche_ref      # Pathologist / curated labels (when available)
+  active_key: niche_pseudo       # Which key the pilot trainer should use
+
+split_unit: slide                # Never split bins from the same slide
+
+slides:
+  # ── DEV (single-slide pilot) ────────────────────────────────────
+  # When you have only one slide, all three splits point to the same
+  # file (spatial-block pseudo-splits handled inside the trainer).
+  train:
+    - id: square_016um_dev
+      h5ad: ml/data_pack/local/square_016um_dev.h5ad
+  val:
+    - id: square_016um_dev
+      h5ad: ml/data_pack/local/square_016um_dev.h5ad
+  test:
+    - id: square_016um_dev
+      h5ad: ml/data_pack/local/square_016um_dev.h5ad
+
+  # ── MULTI-SLIDE (uncomment & fill when you have real slides) ────
+  # train:
+  #   - id: VISIUM_HD_001
+  #     h5ad: ml/data_pack/local/VISIUM_HD_001.h5ad
+  #   - id: VISIUM_HD_002
+  #     h5ad: ml/data_pack/local/VISIUM_HD_002.h5ad
+  # val:
+  #   - id: VISIUM_HD_003
+  #     h5ad: ml/data_pack/local/VISIUM_HD_003.h5ad
+  # test:
+  #   - id: VISIUM_HD_004
+  #     h5ad: ml/data_pack/local/VISIUM_HD_004.h5ad
+
+min_slides:
+  dev: 1           # Acceptable for plumbing / pilot training
+  credible: 5      # Minimum for cross-slide generalization claims
+
+metrics:
+  primary: macro_f1
+  secondary:
+    - balanced_accuracy
+    - ari_pseudo_vs_ref       # Only when both label keys exist
+
+random_seed: 42

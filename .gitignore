@@ -31,3 +31,6 @@ dist-ssr
 # Large local AnnData / spatial pack outputs (multi‑GB; never commit)
 ml/data_pack/local/*.h5ad
 _tmp_*.h5ad
+
+# Pilot training artifacts (regenerated per run)
+ml/spatial/pilot_results/
