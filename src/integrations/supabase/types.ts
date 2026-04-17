@@ -50,6 +50,39 @@ export type Database = {
         }
         Relationships: []
       }
+      dataset_samples: {
+        Row: {
+          created_at: string
+          dataset_id: string
+          sample_id: string
+        }
+        Insert: {
+          created_at?: string
+          dataset_id: string
+          sample_id: string
+        }
+        Update: {
+          created_at?: string
+          dataset_id?: string
+          sample_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dataset_samples_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dataset_samples_sample_id_fkey"
+            columns: ["sample_id"]
+            isOneToOne: false
+            referencedRelation: "samples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       datasets: {
         Row: {
           cohort: string | null
@@ -62,6 +95,7 @@ export type Database = {
           name: string
           samples: number | null
           status: string
+          study_id: string | null
           updated_at: string
           user_id: string
         }
@@ -76,6 +110,7 @@ export type Database = {
           name: string
           samples?: number | null
           status?: string
+          study_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -90,10 +125,19 @@ export type Database = {
           name?: string
           samples?: number | null
           status?: string
+          study_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "datasets_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       experiments: {
         Row: {
@@ -150,6 +194,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      jobs: {
+        Row: {
+          created_at: string
+          experiment_id: string | null
+          id: string
+          logs: Json | null
+          payload: Json | null
+          pipeline_run_id: string | null
+          result: Json | null
+          status: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          experiment_id?: string | null
+          id?: string
+          logs?: Json | null
+          payload?: Json | null
+          pipeline_run_id?: string | null
+          result?: Json | null
+          status?: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          experiment_id?: string | null
+          id?: string
+          logs?: Json | null
+          payload?: Json | null
+          pipeline_run_id?: string | null
+          result?: Json | null
+          status?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       pipeline_runs: {
         Row: {
@@ -257,6 +343,77 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      samples: {
+        Row: {
+          biospecimen_id: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          study_id: string
+          subject_id: string
+          timepoint: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          biospecimen_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          study_id: string
+          subject_id: string
+          timepoint?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          biospecimen_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          study_id?: string
+          subject_id?: string
+          timepoint?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "samples_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studies: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
