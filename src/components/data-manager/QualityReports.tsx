@@ -97,11 +97,11 @@ export function QualityReports({ datasets }: QualityReportsProps) {
     if (!selected || !summary) return;
     setSaving(true);
     try {
-      const meta = selected.metadata ?? {};
+      const meta = (selected.metadata ?? {}) as Record<string, unknown>;
       const { error } = await supabase
         .from("datasets")
         .update({
-          metadata: { ...meta, qc_summary: summary },
+          metadata: { ...meta, qc_summary: summary } as never,
         })
         .eq("id", selected.id);
       if (error) throw error;
