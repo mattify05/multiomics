@@ -200,7 +200,7 @@ export type Database = {
           created_at: string
           experiment_id: string | null
           id: string
-          logs: string | null
+          logs: Json | null
           payload: Json | null
           pipeline_run_id: string | null
           result: Json | null
@@ -213,7 +213,7 @@ export type Database = {
           created_at?: string
           experiment_id?: string | null
           id?: string
-          logs?: string | null
+          logs?: Json | null
           payload?: Json | null
           pipeline_run_id?: string | null
           result?: Json | null
@@ -226,7 +226,7 @@ export type Database = {
           created_at?: string
           experiment_id?: string | null
           id?: string
-          logs?: string | null
+          logs?: Json | null
           payload?: Json | null
           pipeline_run_id?: string | null
           result?: Json | null
