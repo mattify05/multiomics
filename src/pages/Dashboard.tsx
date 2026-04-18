@@ -117,13 +117,19 @@ export default function Dashboard() {
           index={2}
         />
         <StatCard
-          title="XAI Reports"
-          value={loading ? "…" : q?.xaiCount ?? 0}
-          subtitle="result_type = xai_report"
+          title="Jobs"
+          value={loading ? "…" : q?.jobCount ?? 0}
+          subtitle={loading ? undefined : `${q?.activeJobs ?? 0} active · ${q?.xaiCount ?? 0} XAI reports`}
           icon={BarChart3}
           index={3}
         />
       </div>
+
+      {statsQuery.isError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+          Could not load dashboard stats: {(statsQuery.error as Error).message}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <motion.div
