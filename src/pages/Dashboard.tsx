@@ -25,30 +25,44 @@ export default function Dashboard() {
   const statsQuery = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: async () => {
-      const [{ data: datasets, count: datasetCount }, { data: runs, count: runCount }, { data: experiments, count: expCount }, xaiCountRes] =
+      const [datasetsRes, runsRes, experimentsRes, xaiCountRes, jobsRes] =
         await Promise.all([
           supabase.from("datasets").select("id, modality", { count: "exact" }),
           supabase.from("pipeline_runs").select("id, status", { count: "exact" }),
           supabase.from("experiments").select("id, metrics", { count: "exact" }),
           supabase.from("results").select("id", { count: "exact", head: true }).eq("result_type", "xai_report"),
+          supabase.from("jobs").select("id, status", { count: "exact" }),
         ]);
 
-      const modalities = new Set((datasets ?? []).map((d) => d.modality));
-      const activeRuns = (runs ?? []).filter((r) => r.status === "running" || r.status === "pending" || r.status === "queued").length;
+      if (datasetsRes.error) throw datasetsRes.error;
+      if (runsRes.error) throw runsRes.error;
+      if (experimentsRes.error) throw experimentsRes.error;
+      if (jobsRes.error) throw jobsRes.error;
+
+      const datasets = datasetsRes.data ?? [];
+      const runs = runsRes.data ?? [];
+      const experiments = experimentsRes.data ?? [];
+      const jobs = jobsRes.data ?? [];
+
+      const modalities = new Set(datasets.map((d) => d.modality));
+      const activeRuns = runs.filter((r) => r.status === "running" || r.status === "pending" || r.status === "queued").length;
+      const activeJobs = jobs.filter((j) => j.status === "running" || j.status === "pending" || j.status === "queued").length;
       let bestAuc: number | null = null;
-      for (const e of experiments ?? []) {
+      for (const e of experiments) {
         const m = e.metrics as Record<string, unknown> | null;
         const auc = typeof m?.auc === "number" ? m.auc : null;
         if (auc != null && (bestAuc == null || auc > bestAuc)) bestAuc = auc;
       }
       return {
-        datasetCount: datasetCount ?? 0,
+        datasetCount: datasetsRes.count ?? 0,
         modalityCount: modalities.size,
-        runCount: runCount ?? 0,
+        runCount: runsRes.count ?? 0,
         activeRuns,
-        expCount: expCount ?? 0,
+        expCount: experimentsRes.count ?? 0,
         bestAuc,
         xaiCount: xaiCountRes.count ?? 0,
+        jobCount: jobsRes.count ?? 0,
+        activeJobs,
       };
     },
   });
@@ -103,13 +117,19 @@ export default function Dashboard() {
           index={2}
         />
         <StatCard
-          title="XAI Reports"
-          value={loading ? "…" : q?.xaiCount ?? 0}
-          subtitle="result_type = xai_report"
+          title="Jobs"
+          value={loading ? "…" : q?.jobCount ?? 0}
+          subtitle={loading ? undefined : `${q?.activeJobs ?? 0} active · ${q?.xaiCount ?? 0} XAI reports`}
           icon={BarChart3}
           index={3}
         />
       </div>
+
+      {statsQuery.isError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+          Could not load dashboard stats: {(statsQuery.error as Error).message}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <motion.div
