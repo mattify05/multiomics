@@ -1,0 +1,17 @@
+# Path is relative to the build context (repo root).
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+ml/data_pack/local/*
+!ml/data_pack/local/.gitkeep
+ml/**/*.h5ad
+.git
+.github
+node_modules
+src
+public
+supabase
+*.md
+!ml/**/*.md

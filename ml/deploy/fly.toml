@@ -1,0 +1,45 @@
+# Fly.io deployment for the OmicsAI FastAPI ML worker.
+# Steps (one-time):
+#   1. fly launch --no-deploy --copy-config --dockerfile ml/deploy/Dockerfile
+#      (when prompted, point fly at this fly.toml)
+#   2. fly secrets set \
+#        SUPABASE_URL=https://<ref>.supabase.co \
+#        SUPABASE_SERVICE_ROLE_KEY=<service-role-key> \
+#        ML_TRAINING_WEBHOOK_SECRET=<shared-secret> \
+#        ML_RUN_STORE_BACKEND=supabase \
+#        ML_ALLOW_SYNTHETIC_FALLBACK=false
+#   3. fly deploy --dockerfile ml/deploy/Dockerfile
+#
+# After the worker is healthy, copy its public URL (e.g. https://omics-ml-api.fly.dev)
+# into the Lovable Cloud secrets:
+#   ML_TRAINING_WEBHOOK_URL=https://omics-ml-api.fly.dev/internal/tabular/train
+#   ML_SPATIAL_API_URL=https://omics-ml-api.fly.dev
+
+app = "omics-ml-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"   # resolved relative to this file
+
+[env]
+  PORT = "8787"
+  ML_RUN_STORE_BACKEND = "supabase"
+  ML_ALLOW_SYNTHETIC_FALLBACK = "false"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

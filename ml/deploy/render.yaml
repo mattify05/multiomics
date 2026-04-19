@@ -1,0 +1,29 @@
+# Render.com Blueprint for the OmicsAI FastAPI ML worker.
+# Commit this file at the repo root path you prefer, then in Render:
+#   New → Blueprint → point at this repo → Render reads ml/deploy/render.yaml.
+#
+# After first deploy, set the secret env vars in the Render dashboard
+# (they are marked sync:false so Render won't echo them back).
+services:
+  - type: web
+    name: omics-ml-api
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./ml/deploy/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8787
+      - key: ML_RUN_STORE_BACKEND
+        value: supabase
+      - key: ML_ALLOW_SYNTHETIC_FALLBACK
+        value: "false"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ML_TRAINING_WEBHOOK_SECRET
+        sync: false
