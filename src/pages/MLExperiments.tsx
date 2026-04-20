@@ -87,6 +87,31 @@ export default function MLExperiments() {
   const [launching, setLaunching] = useState(false);
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [selectedRunForChart, setSelectedRunForChart] = useState<string | null>(null);
+  const [smokeRunning, setSmokeRunning] = useState(false);
+
+  const handleSmokeTest = async () => {
+    if (!user) return;
+    setSmokeRunning(true);
+    try {
+      const result = await runSmokeTest(supabase, user.id, selectedStudyId);
+      toast({
+        title: "Smoke test launched",
+        description: `${result.experimentName} — watch the Experiment Runs table; should complete in <30s.`,
+      });
+      setSelectedRunForChart(result.experimentId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["datasets"] }),
+        queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["experiments"] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+      ]);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Smoke test failed";
+      toast({ title: "Smoke test failed", description: msg, variant: "destructive" });
+    } finally {
+      setSmokeRunning(false);
+    }
+  };
 
   const datasetsByStudyQuery = useQuery({
     queryKey: ["dataset-ids-by-study", selectedStudyId ?? "all"],
