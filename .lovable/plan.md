@@ -1,63 +1,112 @@
 
-The schema migration landed and types regenerated. The app now has a complete data model (studies, samples, datasets, dataset_samples, jobs, experiments, pipeline_runs, results, audit_log) with RLS. From here, "production-ready" splits into three tracks: **wire-up** (replace remaining mock data), **harden** (security, errors, observability), and **deploy** (ML worker, env, hosting).
 
-Below is a prioritized roadmap.
+The user wants a concrete operational playbook for the next phase: getting real ML training running end-to-end on the deployed Fly worker. They need three things: (1) what data to use and where it goes, (2) how to launch + observe a run, (3) what training actually happens under the hood.
 
-# Roadmap to Production / Training-Ready
+Let me check what training code is wired up and what data contracts exist.
 
-## Track 1 — Wire remaining UI to real data (1–2 sessions each)
+Key facts from context:
+- Worker deployed at `ML_SPATIAL_API_URL` (Fly), secrets all set
+- Tabular path: UI → `pipeline-orchestrator` edge fn → POST `ML_TRAINING_WEBHOOK_URL` (`/internal/tabular/train`) with `experiment_id` + `job_id` + `X-Training-Webhook-Secret` → worker calls `run_tabularExperiment_job` → loads file from `omics-data` bucket via `datasets.file_path` → trains → writes back to `experiments`/`jobs`/`results` using `SUPABASE_SERVICE_ROLE_KEY`
+- Data contract (`ml/tabular_training/spec.py`): one row per sample, `sample_id` index, numeric feature columns, label column from `hyperparameters.label_column`, optional `patient_id_column` for grouped split, `.parquet`/`.csv`/`.tsv`
+- Models available: ElasticNet/GBR/MLP (regression in `train_tcga_purity.py`); tabular job_runner uses `build_estimator(model_name)` for classification
+- Storage: `omics-data` bucket, files must live under `<auth.uid()>/...` per RLS update policy
+- UI: `MLExperiments.tsx` already calls orchestrator with `launch_experiment`; pipeline must be created first via `PipelineBuilder`
+- Spatial path: separate `dispatch_spatial` action → `/run/spatial/{sprint}` endpoints
 
-Most pages still render mock arrays. To be useful end-to-end, these need DB-backed data:
-
-| Page | Current state | What to wire |
-|------|---------------|--------------|
-| **Dashboard** | Mock stat cards | Counts from `datasets`, `experiments`, `pipeline_runs`, `jobs` for current user |
-| **Pipeline Builder** | Mock graph + fake "run" | On submit: insert `pipeline_runs` row + invoke `pipeline-orchestrator` edge function; poll status |
-| **ML Experiments** | Mock job list | Read `experiments` + `jobs` joined; show real status; "Start" inserts `experiments` + `jobs` rows |
-| **Results Explorer** | Demo artifacts | Read `results` table; load `file_path` from storage as signed URL |
-| **XAI Reports** | Static demo | Read `results` where `result_type = 'xai'` |
-| **Audit Log** | Already wired ✓ | — |
-| **Team Access** | Already wired ✓ | — |
-
-## Track 2 — Hardening (required before real users)
-
-1. **Auth settings** — enable HIBP (leaked password) check; confirm email confirmation flow; set Site URL + redirect URLs in Cloud auth settings for the production domain.
-2. **Run a security scan** — fix any RLS gaps the linter finds (especially around `dataset_samples` and `jobs`).
-3. **Loading + error UX** — every Supabase query needs `isLoading` skeleton + `error` toast. Many pages currently render blank on error.
-4. **Empty states** — first-time users see broken-looking pages today. Add "Create your first study" / "Upload your first dataset" CTAs.
-5. **Storage hygiene** — verify `omics-data` bucket RLS path convention `<user_id>/...`; confirm 10 GB limit migration applied.
-6. **Edge function correlation IDs** — `pipeline-orchestrator` should forward `x-request-id` to the ML API and persist it on `pipeline_runs.config` for tracing.
-
-## Track 3 — Training-ready (ML worker integration)
-
-The Python `ml/api/main.py` worker exists but isn't deployed. To make training work end-to-end:
-
-1. **Deploy the FastAPI worker** (Fly/Render/Railway/Cloud Run). It needs `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ML_TRAINING_WEBHOOK_SECRET`.
-2. **Set edge function secrets**: `ML_TRAINING_WEBHOOK_URL`, `ML_TRAINING_WEBHOOK_SECRET`, `ML_SPATIAL_API_URL` so `pipeline-orchestrator` can dispatch jobs.
-3. **Verify the spatial Go/No-Go checklist** (`ml/spatial/GO_NOGO_CHECKLIST.md`) — pilot trainer, splits manifest, snapshot pinned.
-4. **Frontend env**: set `VITE_SPATIAL_API_URL` and `VITE_TABULAR_TRAINING_ENABLED` once worker is live.
-
-## Track 4 — Deployment
-
-1. **Publish** the Lovable frontend (Publish button → `.lovable.app` URL).
-2. **Connect a custom domain** (Settings → Domains).
-3. **Smoke test** end-to-end on the published URL: signup → upload → audit log entry appears.
+This is a documentation/runbook request, not a build task. No code changes needed — present a plan that IS the runbook.
 
 ---
 
-## Suggested order
+# Track 3 next step: First end-to-end ML training run
 
-1. **Now**: Track 2 items 1–4 (auth + security scan + loading/empty states) — small, high-impact, no infra needed.
-2. **Next**: Track 1 Dashboard + Results Explorer — most visible "feels real" wins.
-3. **Then**: Track 1 Pipeline Builder + ML Experiments — depends on the orchestrator already existing.
-4. **Before real training**: Track 3 (worker deployment) — biggest external dependency, plan it separately.
-5. **Last**: Track 4 (publish + custom domain).
+## A. What data, what shape, where it goes
 
-## What I'd recommend for the next message
+**Tabular (clinical-outcome classification — the wired path):**
 
-Pick **one** of:
-- "Do Track 2 items 1–4" (auth hardening + loading/empty states across pages)
-- "Wire the Dashboard to real counts" (smallest, most visible)
-- "Wire Pipeline Builder + ML Experiments to the DB" (largest single chunk)
+Required file format (`ml/tabular_training/spec.py`):
+- `.parquet` (preferred), `.csv`, or `.tsv`
+- One row per analytical sample
+- Column or index named `sample_id`
+- All other columns numeric features (auto-coerced, NaN→0)
+- One label column (binary 0/1 or string class) — name chosen at experiment launch
+- Optional `patient_id` column → triggers `GroupShuffleSplit` (no patient leakage)
 
-Each is a single focused implementation pass.
+**Smallest viable test file** (~50 samples × ~200 features) is enough to prove the pipeline. A real first dataset: any TCGA expression subset with a binary outcome (e.g. responder/non-responder, stage I-II vs III-IV).
+
+**Where it goes:**
+1. Log in to the app → **Data Manager** → upload via `DatasetUploadForm`
+2. The form writes the file to Storage at `omics-data/<your-user-id>/<dataset-id>/<filename>` and creates a `datasets` row with `file_path` pointing at it
+3. RLS guarantees only you (and lab_owners) can read it; the worker uses the service-role key so it bypasses RLS
+
+**Spatial (`.h5ad`):** path-based, not uploaded through the UI yet. Worker needs the `.h5ad` already on its filesystem (or a future signed-URL fetch). For first runs use the synthetic generator: `python ml/data_pack/make_synthetic_spatial_h5ad.py` baked into the Fly image, or skip spatial for this milestone.
+
+## B. How to launch an experiment and watch it run
+
+**Launch (UI flow):**
+1. **Pipeline Builder** → select the uploaded dataset(s) → Launch Pipeline (creates `pipeline_runs` row)
+2. **ML Experiments** → pick that pipeline → choose model (`xgboost`, `random_forest`, `mlp`, etc.) → fill hyperparameters: `label_column`, optional `patient_id_column`, `train_test_split` (e.g. `"80/20"`), `seed` → Launch Training
+3. UI calls `pipeline-orchestrator` with `action: "launch_experiment"` → edge fn inserts `experiments` + `jobs` rows and POSTs `{experiment_id, job_id}` to the Fly worker with `X-Training-Webhook-Secret`
+
+**Observe (3 places, in order of usefulness):**
+
+| Where | What you see | How |
+|---|---|---|
+| ML Experiments page | Status (queued→running→completed/failed), AUC/F1 once done, recent job log lines | Auto-polls; refresh if stale |
+| Fly worker logs | Worker-side stack traces, training progress, webhook-receipt confirmation | `fly logs -a <app-name>` from local terminal, or Fly dashboard → Live Logs |
+| Edge function logs | Whether the webhook actually fired and what status Fly returned | Lovable Cloud → Functions → `pipeline-orchestrator` → Logs (or I can pull them via `supabase--edge_function_logs`) |
+
+**Debug ladder when something fails:**
+1. Experiment stuck in `queued` → edge function never called Fly. Check edge logs for `ML_TRAINING_WEBHOOK_URL` errors.
+2. Experiment goes `running` then `failed` → worker received it. Check `fly logs` for the Python traceback and the `jobs.logs` array (visible in UI) for the `_fail` message.
+3. 401 from worker → `ML_TRAINING_WEBHOOK_SECRET` mismatch between Lovable Cloud and Fly.
+4. Worker can't read dataset → service role key wrong, or `file_path` doesn't exist in `omics-data` bucket.
+
+## C. What training actually happens
+
+Inside `run_tabularExperiment_job` (`ml/tabular_training/job_runner.py`):
+
+```text
+1. Read experiments + jobs row (status → running)
+2. Resolve datasets[*].file_path → download from omics-data bucket
+3. load_feature_table() → pandas DataFrame
+4. feature_label_split(label_column, patient_id_column)
+   → X (numeric), y (label), groups (optional)
+5. Split:
+     if groups present → GroupShuffleSplit(test_size = parsed from "80/20")
+     else            → train_test_split(stratify=y)
+6. build_estimator(model_name, random_state):
+     - logistic_regression / random_forest / xgboost / mlp
+     - MLP gets wrapped in StandardScaler pipeline
+7. estimator.fit(X_train, y_train)
+8. evaluate_binary_or_multiclass(estimator, X_test, y_test):
+     - AUC, F1, accuracy, confusion matrix
+     - permutation feature importance (top-N) → xai_report
+9. Write back via service-role client:
+     - results: { evaluation, xai_report }
+     - experiments: status=completed, metrics={auc,f1,...}, runtime
+     - jobs: status=completed, logs append
+10. On any exception → _fail() marks experiment + job failed and writes the error to logs
+```
+
+Models live in `ml/tabular_training/models.py` (`build_estimator`); metrics in `metrics.py`. To add a model, extend `build_estimator` — no UI change needed beyond adding it to `modelCatalogue` in `MLExperiments.tsx`.
+
+## D. Recommended first run (concrete)
+
+1. Generate a tiny synthetic CSV locally:
+   - 100 rows × 50 numeric columns + `label` (0/1) + `sample_id`
+2. Upload it via Data Manager
+3. Pipeline Builder → just that one dataset → Launch
+4. ML Experiments → model: `random_forest`, `label_column: "label"`, split: `80/20`, seed: `42` → Launch
+5. Open Fly logs in one tab, ML Experiments in another — should complete in <30s
+6. Click the completed experiment → Model Card downloads, AUC/F1 visible
+
+Once this green-paths, swap in a real TCGA-derived parquet and repeat.
+
+## E. What I'll do next (after you approve)
+
+Pick one as the immediate next implementation pass:
+1. **Build the synthetic test CSV + a "Run smoke test" button** on ML Experiments that uploads it and launches a canonical experiment in one click — fastest path to a verified end-to-end run.
+2. **Wire live job-log streaming** (poll `jobs.logs` every 2s while status is `running`) so you can watch worker progress in the UI without `fly logs`.
+3. **Add a Fly-logs deep link + edge-function-logs deep link** on each experiment row for one-click debugging.
+4. Just run a real training now using existing UI — I'll guide you live and watch logs via the Supabase tools.
+
