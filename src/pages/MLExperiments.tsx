@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { StatusBadge } from "@/components/StatusBadge";
-import { FlaskConical, Play, ChevronDown, BarChart3, Loader2 } from "lucide-react";
+import { FlaskConical, Play, ChevronDown, BarChart3, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -10,6 +10,7 @@ import { finalizeExperimentWithDemoArtifacts } from "@/lib/demoArtifacts";
 import { formatRelativeTime } from "@/lib/format";
 import { buildModelCardMarkdown } from "@/lib/demoArtifacts";
 import { buildReproduceNotebookCell } from "@/lib/notebookExport";
+import { runSmokeTest } from "@/lib/smokeTest";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useStudyContext } from "@/contexts/StudyContext";
 import { z } from "zod";
@@ -86,6 +87,31 @@ export default function MLExperiments() {
   const [launching, setLaunching] = useState(false);
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [selectedRunForChart, setSelectedRunForChart] = useState<string | null>(null);
+  const [smokeRunning, setSmokeRunning] = useState(false);
+
+  const handleSmokeTest = async () => {
+    if (!user) return;
+    setSmokeRunning(true);
+    try {
+      const result = await runSmokeTest(supabase, user.id, selectedStudyId);
+      toast({
+        title: "Smoke test launched",
+        description: `${result.experimentName} — watch the Experiment Runs table; should complete in <30s.`,
+      });
+      setSelectedRunForChart(result.experimentId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["datasets"] }),
+        queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["experiments"] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+      ]);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Smoke test failed";
+      toast({ title: "Smoke test failed", description: msg, variant: "destructive" });
+    } finally {
+      setSmokeRunning(false);
+    }
+  };
 
   const datasetsByStudyQuery = useQuery({
     queryKey: ["dataset-ids-by-study", selectedStudyId ?? "all"],
@@ -376,8 +402,19 @@ export default function MLExperiments() {
             >
               Export Jupyter stub
             </button>
+            <button
+              type="button"
+              onClick={handleSmokeTest}
+              disabled={smokeRunning || !user}
+              title="Generates a synthetic 100×50 CSV, uploads it, creates a pipeline, and launches a Random Forest experiment end-to-end."
+              className="w-full rounded-lg border border-primary/40 bg-primary/5 px-4 py-2 text-xs font-medium text-primary hover:bg-primary/15 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {smokeRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {smokeRunning ? "Running smoke test…" : "Run smoke test"}
+            </button>
           </div>
         </div>
+
 
         <div className="col-span-8">
           <div className="rounded-xl border border-border bg-card">
