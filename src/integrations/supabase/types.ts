@@ -204,6 +204,7 @@ export type Database = {
           payload: Json | null
           pipeline_run_id: string | null
           result: Json | null
+          started_at: string | null
           status: string
           type: string
           updated_at: string
@@ -217,6 +218,7 @@ export type Database = {
           payload?: Json | null
           pipeline_run_id?: string | null
           result?: Json | null
+          started_at?: string | null
           status?: string
           type: string
           updated_at?: string
@@ -230,6 +232,7 @@ export type Database = {
           payload?: Json | null
           pipeline_run_id?: string | null
           result?: Json | null
+          started_at?: string | null
           status?: string
           type?: string
           updated_at?: string
