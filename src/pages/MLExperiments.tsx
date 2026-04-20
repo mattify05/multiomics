@@ -402,8 +402,19 @@ export default function MLExperiments() {
             >
               Export Jupyter stub
             </button>
+            <button
+              type="button"
+              onClick={handleSmokeTest}
+              disabled={smokeRunning || !user}
+              title="Generates a synthetic 100×50 CSV, uploads it, creates a pipeline, and launches a Random Forest experiment end-to-end."
+              className="w-full rounded-lg border border-primary/40 bg-primary/5 px-4 py-2 text-xs font-medium text-primary hover:bg-primary/15 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {smokeRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {smokeRunning ? "Running smoke test…" : "Run smoke test"}
+            </button>
           </div>
         </div>
+
 
         <div className="col-span-8">
           <div className="rounded-xl border border-border bg-card">
