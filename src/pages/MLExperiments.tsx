@@ -10,6 +10,7 @@ import { finalizeExperimentWithDemoArtifacts } from "@/lib/demoArtifacts";
 import { formatRelativeTime } from "@/lib/format";
 import { buildModelCardMarkdown } from "@/lib/demoArtifacts";
 import { buildReproduceNotebookCell } from "@/lib/notebookExport";
+import { runSmokeTest } from "@/lib/smokeTest";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useStudyContext } from "@/contexts/StudyContext";
 import { z } from "zod";
