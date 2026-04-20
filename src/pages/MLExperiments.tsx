@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { StatusBadge } from "@/components/StatusBadge";
-import { FlaskConical, Play, ChevronDown, BarChart3, Loader2 } from "lucide-react";
+import { FlaskConical, Play, ChevronDown, BarChart3, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
