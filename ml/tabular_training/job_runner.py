@@ -45,7 +45,7 @@ def _fail(
         }
     ).eq("id", experiment_id).execute()
     client.table("jobs").update(
-        {"status": "failed", "completed_at": _now_iso(), "updated_at": _now_iso()}
+        {"status": "failed", "updated_at": _now_iso()}
     ).eq("id", job_id).execute()
 
 
@@ -98,6 +98,7 @@ def run_tabular_experiment_job(*, experiment_id: str, job_id: str) -> None:
 
         _append_log(client, job_id, "tabular_worker: resolved experiment and job")
         client.table("jobs").update({"status": "running", "started_at": _now_iso()}).eq("id", job_id).execute()
+        client.table("experiments").update({"status": "running", "started_at": _now_iso()}).eq("id", experiment_id).execute()
 
         dataset_ids: List[str] = list(hp.get(spec.HP_DATASET_IDS) or [])
         if not dataset_ids and exp.get("pipeline_run_id"):
@@ -282,7 +283,6 @@ def run_tabular_experiment_job(*, experiment_id: str, job_id: str) -> None:
         client.table("jobs").update(
             {
                 "status": "completed",
-                "completed_at": _now_iso(),
                 "updated_at": _now_iso(),
                 "worker_version": "tabular-worker-v1",
             }

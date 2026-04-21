@@ -1,5 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+type EdgeClient = any;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -22,6 +24,73 @@ function getErrorMessage(err: unknown): string {
   } catch {
     return "Unknown error";
   }
+}
+
+const nowIso = () => new Date().toISOString();
+
+async function appendJobLogs(
+  supabase: EdgeClient,
+  jobId: string,
+  entries: Array<{ ts: string; line: string }>,
+  userId?: string,
+) {
+  let query = supabase.from("jobs").select("logs").eq("id", jobId);
+  if (userId) query = query.eq("user_id", userId);
+
+  const { data, error } = await query.single();
+  if (error) throw error;
+
+  const currentLogs = Array.isArray((data as { logs?: unknown[] } | null)?.logs)
+    ? ((data as { logs?: unknown[] }).logs ?? [])
+    : [];
+  let updateQuery = supabase
+    .from("jobs")
+    .update({ logs: [...currentLogs, ...entries], updated_at: nowIso() })
+    .eq("id", jobId);
+
+  if (userId) updateQuery = updateQuery.eq("user_id", userId);
+
+  const { error: updateError } = await updateQuery;
+  if (updateError) throw updateError;
+}
+
+async function markExperimentDispatchFailed(
+  supabase: EdgeClient,
+  userId: string,
+  experimentId: string,
+  jobId: string,
+  message: string,
+) {
+  const ts = nowIso();
+  await appendJobLogs(supabase, jobId, [{ ts, line: message }], userId);
+  const { error: jobError } = await supabase
+    .from("jobs")
+    .update({ status: "failed", updated_at: ts })
+    .eq("id", jobId)
+    .eq("user_id", userId);
+  if (jobError) throw jobError;
+
+  const { error: experimentError } = await supabase
+    .from("experiments")
+    .update({
+      status: "failed",
+      completed_at: ts,
+      metrics: { error: message },
+    })
+    .eq("id", experimentId)
+    .eq("user_id", userId);
+  if (experimentError) throw experimentError;
+}
+
+function waitUntil(promise: Promise<unknown>) {
+  const runtime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil: (task: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(promise);
+    return;
+  }
+  void promise;
 }
 
 Deno.serve(async (req) => {
@@ -68,8 +137,7 @@ Deno.serve(async (req) => {
             description,
             config,
             dataset_ids,
-            status: "running",
-            started_at: new Date().toISOString(),
+            status: "queued",
           })
           .select()
           .single();
@@ -128,12 +196,11 @@ Deno.serve(async (req) => {
           .insert({
             user_id: user.id,
             type: "experiment",
-            status: "running",
+            status: "queued",
             experiment_id: experiment.id,
             pipeline_run_id: pipeline_run_id ?? null,
-            started_at: new Date().toISOString(),
             worker_version: "edge-orchestrator-v1",
-            logs: [{ ts: new Date().toISOString(), line: `Experiment ${name} started for model ${model}` }],
+            logs: [{ ts: nowIso(), line: `Experiment ${name} queued for model ${model}` }],
           })
           .select("id")
           .single();
@@ -142,79 +209,70 @@ Deno.serve(async (req) => {
 
         const mlTrainUrl = Deno.env.get("ML_TRAINING_WEBHOOK_URL")?.trim();
         const mlTrainSecret = Deno.env.get("ML_TRAINING_WEBHOOK_SECRET")?.trim();
-        if (mlTrainUrl && mlTrainSecret && job?.id) {
-          const dispatchLog: { ts: string; line: string }[] = [];
-          const ts0 = new Date().toISOString();
-          dispatchLog.push({ ts: ts0, line: `Dispatching training webhook to ${mlTrainUrl}` });
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-            const resp = await fetch(mlTrainUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Training-Webhook-Secret": mlTrainSecret,
-              },
-              body: JSON.stringify({
-                experiment_id: experiment.id,
-                job_id: job.id,
-              }),
-              signal: controller.signal,
-            });
-            clearTimeout(timeoutId);
-            const ts1 = new Date().toISOString();
-            if (!resp.ok) {
-              const bodyText = await resp.text().catch(() => "<unreadable body>");
-              const snippet = bodyText.slice(0, 500);
-              dispatchLog.push({
-                ts: ts1,
-                line: `Webhook dispatch failed: HTTP ${resp.status} ${resp.statusText} — ${snippet}`,
-              });
-              await supabase
-                .from("jobs")
-                .update({
-                  status: "failed",
-                  logs: [
-                    { ts: ts0, line: `Experiment ${name} started for model ${model}` },
-                    ...dispatchLog,
-                  ],
-                })
-                .eq("id", job.id);
-              await supabase
-                .from("experiments")
-                .update({ status: "failed", completed_at: ts1 })
-                .eq("id", experiment.id);
-            } else {
-              dispatchLog.push({ ts: ts1, line: `Webhook accepted (HTTP ${resp.status})` });
-              await supabase
-                .from("jobs")
-                .update({
-                  logs: [
-                    { ts: ts0, line: `Experiment ${name} started for model ${model}` },
-                    ...dispatchLog,
-                  ],
-                })
-                .eq("id", job.id);
+
+        if (!job?.id) {
+          throw new Error("Experiment job could not be created");
+        }
+
+        if (!mlTrainUrl || !mlTrainSecret) {
+          await markExperimentDispatchFailed(
+            supabase,
+            user.id,
+            experiment.id,
+            job.id,
+            "Training webhook is not configured on the backend",
+          );
+        } else {
+          waitUntil((async () => {
+            const ts0 = nowIso();
+            try {
+              await appendJobLogs(supabase, job.id, [{ ts: ts0, line: `Dispatching training webhook to ${mlTrainUrl}` }], user.id);
+
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 45000);
+              try {
+                const resp = await fetch(mlTrainUrl, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Training-Webhook-Secret": mlTrainSecret,
+                  },
+                  body: JSON.stringify({
+                    experiment_id: experiment.id,
+                    job_id: job.id,
+                  }),
+                  signal: controller.signal,
+                });
+                const ts1 = nowIso();
+
+                if (!resp.ok) {
+                  const bodyText = await resp.text().catch(() => "<unreadable body>");
+                  const snippet = bodyText.slice(0, 500);
+                  await markExperimentDispatchFailed(
+                    supabase,
+                    user.id,
+                    experiment.id,
+                    job.id,
+                    `Webhook dispatch failed: HTTP ${resp.status} ${resp.statusText} — ${snippet}`,
+                  );
+                  return;
+                }
+
+                await appendJobLogs(supabase, job.id, [{ ts: ts1, line: `Webhook accepted (HTTP ${resp.status})` }], user.id);
+              } finally {
+                clearTimeout(timeoutId);
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+              await markExperimentDispatchFailed(
+                supabase,
+                user.id,
+                experiment.id,
+                job.id,
+                `Webhook dispatch error: ${msg}`,
+              );
             }
-          } catch (err) {
-            const tsErr = new Date().toISOString();
-            const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-            dispatchLog.push({ ts: tsErr, line: `Webhook dispatch error: ${msg}` });
-            await supabase
-              .from("jobs")
-              .update({
-                status: "failed",
-                logs: [
-                  { ts: ts0, line: `Experiment ${name} started for model ${model}` },
-                  ...dispatchLog,
-                ],
-              })
-              .eq("id", job.id);
-            await supabase
-              .from("experiments")
-              .update({ status: "failed", completed_at: tsErr })
-              .eq("id", experiment.id);
-          }
+          })());
         }
 
         return new Response(JSON.stringify({ success: true, experiment }), {
@@ -228,8 +286,11 @@ Deno.serve(async (req) => {
         const updateData: Record<string, unknown> = { status };
         if (metrics) updateData.metrics = metrics;
         if (runtime) updateData.runtime = runtime;
+        if (status === "running") {
+          updateData.started_at = nowIso();
+        }
         if (status === "completed" || status === "failed") {
-          updateData.completed_at = new Date().toISOString();
+          updateData.completed_at = nowIso();
         }
 
         const { data, error } = await supabase
@@ -242,17 +303,26 @@ Deno.serve(async (req) => {
 
         if (error) throw error;
 
+        const jobStatusUpdate: Record<string, unknown> = { status, updated_at: nowIso() };
+        if (status === "running") {
+          jobStatusUpdate.started_at = nowIso();
+        }
         await supabase
           .from("jobs")
-          .update({
-            status,
-            completed_at: status === "completed" || status === "failed" ? new Date().toISOString() : null,
-            logs: [
-              { ts: new Date().toISOString(), line: `Experiment status changed to ${status}` },
-            ],
-          })
+          .update(jobStatusUpdate)
           .eq("experiment_id", experiment_id)
           .eq("user_id", user.id);
+
+        const { data: relatedJobs, error: relatedJobsError } = await supabase
+          .from("jobs")
+          .select("id")
+          .eq("experiment_id", experiment_id)
+          .eq("user_id", user.id);
+        if (relatedJobsError) throw relatedJobsError;
+
+        await Promise.all((relatedJobs ?? []).map((job) =>
+          appendJobLogs(supabase, job.id, [{ ts: nowIso(), line: `Experiment status changed to ${status}` }], user.id)
+        ));
 
         return new Response(JSON.stringify({ success: true, experiment: data }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -268,14 +338,7 @@ Deno.serve(async (req) => {
           .eq("user_id", user.id)
           .single();
         if (getError) throw getError;
-        const currentLogs = Array.isArray(job.logs) ? job.logs : [];
-        const nextLogs = [...currentLogs, { ts: new Date().toISOString(), line }];
-        const { error: updateError } = await supabase
-          .from("jobs")
-          .update({ logs: nextLogs })
-          .eq("id", job_id)
-          .eq("user_id", user.id);
-        if (updateError) throw updateError;
+        await appendJobLogs(supabase, job.id, [{ ts: nowIso(), line }], user.id);
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -283,15 +346,19 @@ Deno.serve(async (req) => {
 
       case "update_job_status": {
         const { job_id, status } = payload;
+        const updateData: Record<string, unknown> = { status, updated_at: nowIso() };
+        if (status === "running") {
+          updateData.started_at = nowIso();
+        }
+
         const { error } = await supabase
           .from("jobs")
-          .update({
-            status,
-            completed_at: status === "completed" || status === "failed" ? new Date().toISOString() : null,
-          })
+          .update(updateData)
           .eq("id", job_id)
           .eq("user_id", user.id);
         if (error) throw error;
+
+        await appendJobLogs(supabase, job_id, [{ ts: nowIso(), line: `Job status changed to ${status}` }], user.id);
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
