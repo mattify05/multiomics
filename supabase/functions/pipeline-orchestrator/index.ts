@@ -143,19 +143,78 @@ Deno.serve(async (req) => {
         const mlTrainUrl = Deno.env.get("ML_TRAINING_WEBHOOK_URL")?.trim();
         const mlTrainSecret = Deno.env.get("ML_TRAINING_WEBHOOK_SECRET")?.trim();
         if (mlTrainUrl && mlTrainSecret && job?.id) {
-          fetch(mlTrainUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Training-Webhook-Secret": mlTrainSecret,
-            },
-            body: JSON.stringify({
-              experiment_id: experiment.id,
-              job_id: job.id,
-            }),
-          }).catch(() => {
-            /* worker may be offline; experiment stays running until finalized or retried */
-          });
+          const dispatchLog: { ts: string; line: string }[] = [];
+          const ts0 = new Date().toISOString();
+          dispatchLog.push({ ts: ts0, line: `Dispatching training webhook to ${mlTrainUrl}` });
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const resp = await fetch(mlTrainUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Training-Webhook-Secret": mlTrainSecret,
+              },
+              body: JSON.stringify({
+                experiment_id: experiment.id,
+                job_id: job.id,
+              }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            const ts1 = new Date().toISOString();
+            if (!resp.ok) {
+              const bodyText = await resp.text().catch(() => "<unreadable body>");
+              const snippet = bodyText.slice(0, 500);
+              dispatchLog.push({
+                ts: ts1,
+                line: `Webhook dispatch failed: HTTP ${resp.status} ${resp.statusText} — ${snippet}`,
+              });
+              await supabase
+                .from("jobs")
+                .update({
+                  status: "failed",
+                  logs: [
+                    { ts: ts0, line: `Experiment ${name} started for model ${model}` },
+                    ...dispatchLog,
+                  ],
+                })
+                .eq("id", job.id);
+              await supabase
+                .from("experiments")
+                .update({ status: "failed", completed_at: ts1 })
+                .eq("id", experiment.id);
+            } else {
+              dispatchLog.push({ ts: ts1, line: `Webhook accepted (HTTP ${resp.status})` });
+              await supabase
+                .from("jobs")
+                .update({
+                  logs: [
+                    { ts: ts0, line: `Experiment ${name} started for model ${model}` },
+                    ...dispatchLog,
+                  ],
+                })
+                .eq("id", job.id);
+            }
+          } catch (err) {
+            const tsErr = new Date().toISOString();
+            const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+            dispatchLog.push({ ts: tsErr, line: `Webhook dispatch error: ${msg}` });
+            await supabase
+              .from("jobs")
+              .update({
+                status: "failed",
+                logs: [
+                  { ts: ts0, line: `Experiment ${name} started for model ${model}` },
+                  ...dispatchLog,
+                ],
+              })
+              .eq("id", job.id);
+            await supabase
+              .from("experiments")
+              .update({ status: "failed", completed_at: tsErr })
+              .eq("id", experiment.id);
+          }
         }
 
         return new Response(JSON.stringify({ success: true, experiment }), {
