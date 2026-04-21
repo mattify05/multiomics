@@ -1,5 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+type EdgeClient = any;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -27,7 +29,7 @@ function getErrorMessage(err: unknown): string {
 const nowIso = () => new Date().toISOString();
 
 async function appendJobLogs(
-  supabase: ReturnType<typeof createClient>,
+  supabase: EdgeClient,
   jobId: string,
   entries: Array<{ ts: string; line: string }>,
   userId?: string,
@@ -38,7 +40,9 @@ async function appendJobLogs(
   const { data, error } = await query.single();
   if (error) throw error;
 
-  const currentLogs = Array.isArray(data.logs) ? data.logs : [];
+  const currentLogs = Array.isArray((data as { logs?: unknown[] } | null)?.logs)
+    ? ((data as { logs?: unknown[] }).logs ?? [])
+    : [];
   let updateQuery = supabase
     .from("jobs")
     .update({ logs: [...currentLogs, ...entries], updated_at: nowIso() })
@@ -51,7 +55,7 @@ async function appendJobLogs(
 }
 
 async function markExperimentDispatchFailed(
-  supabase: ReturnType<typeof createClient>,
+  supabase: EdgeClient,
   userId: string,
   experimentId: string,
   jobId: string,
@@ -76,6 +80,17 @@ async function markExperimentDispatchFailed(
     .eq("id", experimentId)
     .eq("user_id", userId);
   if (experimentError) throw experimentError;
+}
+
+function waitUntil(promise: Promise<unknown>) {
+  const runtime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil: (task: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(promise);
+    return;
+  }
+  void promise;
 }
 
 Deno.serve(async (req) => {
@@ -208,7 +223,7 @@ Deno.serve(async (req) => {
             "Training webhook is not configured on the backend",
           );
         } else {
-          EdgeRuntime.waitUntil((async () => {
+          waitUntil((async () => {
             const ts0 = nowIso();
             try {
               await appendJobLogs(supabase, job.id, [{ ts: ts0, line: `Dispatching training webhook to ${mlTrainUrl}` }], user.id);
